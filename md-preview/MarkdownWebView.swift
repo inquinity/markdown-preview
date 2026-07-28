@@ -460,6 +460,10 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
         case "mermaidHover":
             guard let value = dict["value"] as? NSNumber else { return }
             isPointerOverMermaidFigure = value.boolValue
+        #if !QUICK_LOOK_EXTENSION
+        case "mermaidPopup":
+            presentMermaidPopup(dict)
+        #endif
         case "copyCode":
             guard let text = dict["value"] as? String else { return }
             let pasteboard = NSPasteboard.general
@@ -551,6 +555,25 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
             presenter.present(in: self.webView)
         }
     }
+
+    #if !QUICK_LOOK_EXTENSION
+    private func presentMermaidPopup(_ payload: [String: Any]) {
+        guard let svg = payload["svg"] as? String, !svg.isEmpty else { return }
+        let natural = CGSize(
+            width: (payload["naturalWidth"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 0,
+            height: (payload["naturalHeight"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 0
+        )
+        let display = CGSize(
+            width: (payload["displayWidth"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 0,
+            height: (payload["displayHeight"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 0
+        )
+        let sectionTitle = payload["sectionTitle"] as? String
+        MermaidDiagramPopup.shared.present(
+            .init(svgHTML: svg, naturalSize: natural, displaySize: display, sectionTitle: sectionTitle),
+            relativeTo: window
+        )
+    }
+    #endif
 
     func find(_ query: String,
               backwards: Bool = false,
