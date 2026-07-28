@@ -2876,6 +2876,31 @@ nonisolated enum MarkdownHTML {
         margin-right: auto;
     }
     article.markdown-body > *:first-child { margin-top: 0 !important; }
+    .md-inline-tab {
+        white-space: pre;
+        tab-size: 4;
+    }
+    .md-source-list-indent-step {
+        display: block;
+        box-sizing: border-box;
+        padding-inline-start: 1.6em;
+    }
+    .md-source-list-line {
+        display: block;
+        margin-top: \(listItemSpacing)px;
+    }
+    .md-source-list-marker {
+        display: inline-block;
+        box-sizing: border-box;
+        width: 1.6em;
+        margin-inline-start: -1.6em;
+        padding-inline-end: 0.45em;
+        text-align: end;
+    }
+    .md-source-task-marker {
+        text-align: center;
+        padding-inline-end: 0.25em;
+    }
 
     /* Frontmatter properties — Obsidian-style metadata panel. Deliberately
        quieter than document content: no row borders (content tables own
@@ -3279,6 +3304,7 @@ nonisolated enum MarkdownHTML {
     .markdown-alert-caution .markdown-alert-title { color: #d1242f; }
 
     ul, ol { margin: \(paragraphSpacing)px 0 0; padding-left: 1.6em; }
+    ul { list-style-type: "•  "; }
     li { margin-top: \(listItemSpacing)px; }
     li:first-child { margin-top: 0; }
     li > ul, li > ol { margin-top: \(listItemSpacing)px; }

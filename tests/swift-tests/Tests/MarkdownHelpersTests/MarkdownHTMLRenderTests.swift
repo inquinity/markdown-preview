@@ -331,18 +331,22 @@ final class MarkdownHTMLRenderTests: XCTestCase {
         ))
     }
 
-    func testReadOnlyRenderingUsesSemanticSpacingForNormalSeparators() {
+    func testReadOnlyRenderingPreservesEveryBlankSourceLine() {
         let rendered = MarkdownHTML.render(
             markdown: "First paragraph.\n\n\n## Heading\n\nSecond paragraph.",
             vendorLoading: .lazy
         )
 
         XCTAssertTrue(rendered.articleHTML.contains(
-            "<div class=\"md-source-blank-line\" aria-hidden=\"true\"></div>\n<h2 data-source-line=\"4\""
+            "<div class=\"md-source-blank-line\" aria-hidden=\"true\"></div>\n<div class=\"md-source-blank-line\" aria-hidden=\"true\"></div>\n<h2 data-source-line=\"4\""
         ))
-        XCTAssertFalse(rendered.articleHTML.contains(
+        XCTAssertTrue(rendered.articleHTML.contains(
             "<div class=\"md-source-blank-line\" aria-hidden=\"true\"></div>\n<p data-source-line=\"6\""
         ))
+        XCTAssertEqual(
+            rendered.articleHTML.components(separatedBy: "md-source-blank-line").count - 1,
+            3
+        )
         XCTAssertTrue(rendered.html.contains(".md-source-blank-line {"))
         XCTAssertTrue(rendered.html.contains("height: 22.8px;"))
         XCTAssertFalse(rendered.html.contains(".md-source-blank-line + *"))
@@ -355,9 +359,329 @@ final class MarkdownHTMLRenderTests: XCTestCase {
         )
 
         XCTAssertTrue(rendered.html.contains("li:first-child { margin-top: 0; }"))
+        XCTAssertTrue(rendered.html.contains("ul { list-style-type: \"•  \"; }"))
         XCTAssertTrue(rendered.html.contains(".md-code-wrap > pre { margin: 0; }"))
         XCTAssertTrue(rendered.html.contains(".md-code-wrap {"))
         XCTAssertTrue(rendered.html.contains("margin: \(MarkdownHTML.paragraphSpacing)px 0 0;"))
+    }
+
+    func testInlineTabsRemainVisibleInReadMode() {
+        let rendered = MarkdownHTML.render(
+            markdown: "Plain \tparagraph.",
+            vendorLoading: .lazy
+        )
+
+        XCTAssertTrue(rendered.articleHTML.contains(
+            "Plain <span class=\"md-inline-tab\" aria-hidden=\"true\">&#9;</span>paragraph."
+        ))
+        XCTAssertTrue(rendered.html.contains(".md-inline-tab {"))
+        XCTAssertTrue(rendered.html.contains("tab-size: 4;"))
+    }
+
+    @MainActor
+    func testInlineTabsAdvanceToTheNextReadModeTabStop() async throws {
+        let rendered = MarkdownHTML.render(
+            markdown: "A\tX\n\nAA\tX\n\nAAA\tX",
+            vendorLoading: .lazy
+        )
+        let styleBlocks = rendered.html
+            .components(separatedBy: "<style>")
+            .dropFirst()
+            .compactMap { $0.components(separatedBy: "</style>").first }
+            .map { "<style>\($0)</style>" }
+            .joined(separator: "\n")
+        let html = """
+        <!DOCTYPE html>
+        <html><head>
+        \(styleBlocks)
+        <style>.markdown-body { font-family: monospace; font-size: 16px; }</style>
+        </head><body>
+        <article class="markdown-body">\(rendered.articleHTML)</article>
+        </body></html>
+        """
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 900, height: 600))
+        webView.loadHTMLString(html, baseURL: nil)
+        while webView.isLoading {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        let result = try await webView.evaluateJavaScript("""
+        (() => JSON.stringify(Array.from(document.querySelectorAll('p')).map((paragraph) => {
+            const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+            let node = null;
+            while (walker.nextNode()) {
+                if (walker.currentNode.nodeValue.includes('X')) {
+                    node = walker.currentNode;
+                    break;
+                }
+            }
+            const range = document.createRange();
+            const index = node.nodeValue.indexOf('X');
+            range.setStart(node, index);
+            range.setEnd(node, index + 1);
+            return range.getBoundingClientRect().x;
+        })))()
+        """)
+        let json = try XCTUnwrap(result as? String)
+        let positions = try JSONDecoder().decode([Double].self, from: Data(json.utf8))
+        XCTAssertEqual(positions.count, 3)
+        XCTAssertEqual(positions.max()! - positions.min()!, 0, accuracy: 1, json)
+    }
+
+    func testDeepAuthoredListIndentationRemainsVisibleInReadMode() {
+        let source = """
+        - Parent
+            - Child
+                    - Deep bullet
+                    1. Deep ordered
+                    - [x] Deep task
+        """
+        let articleHTML = EscapingHTMLFormatter.format(
+            source,
+            sourceMarkdown: source
+        )
+
+        XCTAssertEqual(
+            articleHTML.components(separatedBy: "class=\"md-source-list-line\"").count - 1,
+            3
+        )
+        XCTAssertEqual(
+            articleHTML.components(separatedBy: "class=\"md-source-list-indent-step\"").count - 1,
+            6
+        )
+        XCTAssertTrue(articleHTML.contains(
+            "<span class=\"md-source-list-marker\" aria-hidden=\"true\">•</span>Deep bullet"
+        ))
+        XCTAssertTrue(articleHTML.contains(
+            "<span class=\"md-source-list-marker\" aria-hidden=\"true\">1.</span>Deep ordered"
+        ))
+        XCTAssertTrue(articleHTML.contains(
+            "class=\"task-list-item-checkbox\" disabled=\"\" checked=\"\""
+        ))
+        XCTAssertTrue(articleHTML.contains(" /></span>Deep task"))
+        XCTAssertFalse(articleHTML.contains("<br />\n- Deep bullet"))
+
+        let rendered = MarkdownHTML.makeHTML(from: source)
+        XCTAssertTrue(rendered.contains(".md-source-list-indent-step {"))
+        XCTAssertTrue(rendered.contains(".md-source-list-line {"))
+        XCTAssertTrue(rendered.contains(
+            "padding-inline-start: 1.6em;"
+        ))
+    }
+
+    func testStandaloneListLikeIndentedCodeRemainsCodeInReadMode() {
+        let source = "    - literal code output"
+        let articleHTML = EscapingHTMLFormatter.format(
+            source,
+            sourceMarkdown: source
+        )
+
+        XCTAssertTrue(articleHTML.contains("<pre"))
+        XCTAssertTrue(articleHTML.contains("- literal code output"))
+        XCTAssertFalse(articleHTML.contains("md-source-list-line"))
+    }
+
+    @MainActor
+    func testDeepAuthoredListIndentationHasExpectedReadModeGeometry() async throws {
+        let source = """
+        - Parent
+            - Child
+                    - Deep item
+        """
+        let rendered = MarkdownHTML.render(
+            markdown: source,
+            vendorLoading: .lazy
+        )
+        let styleBlocks = rendered.html
+            .components(separatedBy: "<style>")
+            .dropFirst()
+            .compactMap { $0.components(separatedBy: "</style>").first }
+            .map { "<style>\($0)</style>" }
+            .joined(separator: "\n")
+        let html = """
+        <!DOCTYPE html>
+        <html><head>\(styleBlocks)</head>
+        <body><article class="markdown-body">\(rendered.articleHTML)</article></body></html>
+        """
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 900, height: 600))
+        webView.loadHTMLString(html, baseURL: nil)
+        while webView.isLoading {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        let result = try await webView.evaluateJavaScript("""
+        (() => {
+            const line = document.querySelector('.md-source-list-line');
+            const paragraph = line.closest('p');
+            const childRange = document.createRange();
+            childRange.selectNode(paragraph.firstChild);
+            const itemRange = document.createRange();
+            itemRange.selectNode(line.lastChild);
+            return JSON.stringify({
+                childTextX: childRange.getBoundingClientRect().x,
+                itemTextX: itemRange.getBoundingClientRect().x,
+            });
+        })()
+        """)
+        let json = try XCTUnwrap(result as? String)
+        let geometry = try JSONDecoder().decode(
+            [String: Double].self,
+            from: Data(json.utf8)
+        )
+
+        let childTextX = try XCTUnwrap(geometry["childTextX"])
+        let itemTextX = try XCTUnwrap(geometry["itemTextX"])
+        XCTAssertGreaterThan(itemTextX - childTextX, 40, json)
+    }
+
+    @MainActor
+    func testEveryReadModeListDepthUsesTheSameIndentationStep() async throws {
+        let source = """
+        - Depth 1
+            - Depth 2
+                - Depth 3
+                    - Depth 4
+                        - Depth 5
+        """
+        let rendered = MarkdownHTML.render(
+            markdown: source,
+            vendorLoading: .lazy
+        )
+        let styleBlocks = rendered.html
+            .components(separatedBy: "<style>")
+            .dropFirst()
+            .compactMap { $0.components(separatedBy: "</style>").first }
+            .map { "<style>\($0)</style>" }
+            .joined(separator: "\n")
+        let html = """
+        <!DOCTYPE html>
+        <html><head>\(styleBlocks)</head>
+        <body><article class="markdown-body">\(rendered.articleHTML)</article></body></html>
+        """
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 900, height: 600))
+        webView.loadHTMLString(html, baseURL: nil)
+        while webView.isLoading {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        let result = try await webView.evaluateJavaScript("""
+        (() => JSON.stringify(Array.from({ length: 5 }, (_, offset) => {
+            const label = `Depth ${offset + 1}`;
+            const walker = document.createTreeWalker(
+                document.querySelector('article'),
+                NodeFilter.SHOW_TEXT
+            );
+            while (walker.nextNode()) {
+                const node = walker.currentNode;
+                const index = node.nodeValue.indexOf(label);
+                if (index < 0) continue;
+                const range = document.createRange();
+                range.setStart(node, index);
+                range.setEnd(node, index + label.length);
+                return range.getBoundingClientRect().x;
+            }
+            return null;
+        })))()
+        """)
+        let json = try XCTUnwrap(result as? String)
+        let positions = try JSONDecoder().decode([Double].self, from: Data(json.utf8))
+        XCTAssertEqual(positions.count, 5)
+        let steps = zip(positions, positions.dropFirst()).map { $1 - $0 }
+        for step in steps.dropFirst() {
+            XCTAssertEqual(step, steps[0], accuracy: 1, json)
+        }
+    }
+
+    @MainActor
+    func testEveryEditorListDepthUsesTheSameIndentationStep() async throws {
+        var repository = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 {
+            repository.deleteLastPathComponent()
+        }
+        let bundleURL = repository
+            .appendingPathComponent("md-preview/Vendor/CodeMirror/mdedit.min.js")
+        let bundle = try String(contentsOf: bundleURL, encoding: .utf8)
+            .replacingOccurrences(of: "</script>", with: "<\\/script>")
+        let source = """
+        - Depth 1
+            - Depth 2
+                - Depth 3
+                    - Depth 4
+                        - Depth 5
+        """
+        let encodedSource = try String(
+            data: JSONEncoder().encode(source),
+            encoding: .utf8
+        ).map { String($0.dropFirst().dropLast()) } ?? ""
+        let html = """
+        <!DOCTYPE html>
+        <html><head><style>
+        html, body, #editor { margin: 0; height: 100%; }
+        body { font-family: -apple-system; font-size: 16px; line-height: 1.43; }
+        #editor .cm-scroller {
+            font-family: -apple-system !important;
+            font-size: 16px;
+            line-height: 1.43;
+        }
+        #editor .cm-content { padding: 0; }
+        #editor .cm-line { padding: 0; }
+        #editor .cm-md-list-item {
+            padding-inline-start: 1.6em;
+            text-indent: -1.6em;
+        }
+        .cm-md-bullet {
+            display: inline-block;
+            width: 1.6em;
+            text-indent: 0;
+            text-align: end;
+            padding-inline-end: 0.45em;
+            box-sizing: border-box;
+        }
+        </style></head>
+        <body><div id="editor"></div>
+        <script>\(bundle)</script>
+        <script>window.editor = MDEditor.create(
+            document.getElementById('editor'),
+            "\(encodedSource)",
+            {}
+        );</script>
+        </body></html>
+        """
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 900, height: 600))
+        webView.loadHTMLString(html, baseURL: nil)
+        while webView.isLoading {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        let result = try await webView.evaluateJavaScript("""
+        (() => JSON.stringify(Array.from(document.querySelectorAll('.cm-line')).map((line) => {
+            const range = document.createRange();
+            const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+            let node = null;
+            while (walker.nextNode()) {
+                if (walker.currentNode.nodeValue.includes('Depth')) {
+                    node = walker.currentNode;
+                    break;
+                }
+            }
+            const index = node.nodeValue.indexOf('Depth');
+            range.setStart(node, index);
+            range.setEnd(node, index + 5);
+            return {
+                x: range.getBoundingClientRect().x,
+                style: line.getAttribute('style'),
+                html: line.outerHTML,
+            };
+        })))()
+        """)
+        let json = try XCTUnwrap(result as? String)
+        let rows = try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [[String: Any]]
+        let positions = rows.compactMap { $0["x"] as? Double }
+        XCTAssertEqual(positions.count, 5, json)
+        let steps = zip(positions, positions.dropFirst()).map { $1 - $0 }
+        for step in steps.dropFirst() {
+            XCTAssertEqual(step, steps[0], accuracy: 1, json)
+        }
     }
 
     func testMermaidPostProcessingAcceptsSourceMappedPreTag() {

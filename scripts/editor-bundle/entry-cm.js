@@ -9,12 +9,14 @@ import {
   drawSelection, dropCursor,
 } from "@codemirror/view"
 import { EditorState, EditorSelection, StateField } from "@codemirror/state"
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands"
+import {
+  defaultKeymap, history, historyKeymap, indentLess, insertTab,
+} from "@codemirror/commands"
 import { markdown, markdownLanguage, markdownKeymap } from "@codemirror/lang-markdown"
 import { yamlFrontmatter } from "@codemirror/lang-yaml"
 import {
   syntaxTree, ensureSyntaxTree, syntaxHighlighting, HighlightStyle,
-  LanguageDescription, LanguageSupport, StreamLanguage,
+  indentUnit, LanguageDescription, LanguageSupport, StreamLanguage,
 } from "@codemirror/language"
 import { tags as t } from "@lezer/highlight"
 import { javascript } from "@codemirror/lang-javascript"
@@ -654,7 +656,9 @@ const tableEditors = StateField.define({
 
 const hide = Decoration.replace({})
 const bulletDeco = Decoration.replace({ widget: new TextWidget("•", "cm-md-bullet") })
+const activeBulletDeco = Decoration.mark({ class: "cm-md-bullet-source" })
 const hrDeco = Decoration.replace({ widget: new RuleWidget() })
+const markdownListMarker = /^([ \t]*)([-+*]|\d+[.)])([ \t]+|$)/
 
 const joinDeco = Decoration.replace({ widget: new TextWidget(" ", "cm-md-join") })
 
@@ -662,17 +666,17 @@ const HEADING_LINE = {}
 const for_ = (i) => Decoration.line({ class: "cm-md-h" + i })
 for (let i = 1; i <= 6; i++) HEADING_LINE[i] = for_(i)
 const inactiveHeadingLine = Decoration.line({ class: "cm-md-heading-inactive" })
-// A source line whose height another element owns (a heading's padding, a
-// fence card, the document's first-block margin reset) collapses to nothing.
+// Inactive fence source lines collapse because the rendered code card owns
+// their height.
 const collapsedLine = Decoration.line({ class: "cm-md-line-collapsed" })
 
 // Preview block margin-top values in CSS px. The host passes the live values
 // from MarkdownHTML.swift (the single source of truth) through
 // MDEditor.create's `spacing` option; these defaults only serve headless
-// harnesses. The preview swallows the single blank source line before each
-// block and expresses that separation as the block's own margin-top; the
-// editor mirrors it by resizing the blank separator line to the same height.
+// harnesses. Every authored blank line keeps its natural source-line height,
+// with the adjacent blocks' semantic margins added to the separator.
 const METRICS = {
+  line: 22.8,
   paragraph: 12,  // p / ul / ol / pre / .md-code-wrap
   quote: 18,      // blockquote
   alert: 24,      // .markdown-alert
@@ -708,6 +712,20 @@ const listItemGapLine = Decoration.line({ class: "cm-md-list-item-gap" })
 // Mirrors the preview's list geometry: ul/ol start padding with the marker
 // hanging inside it, so item text and wrapped lines align like rendered <li>s.
 const listItemLine = Decoration.line({ class: "cm-md-list-item" })
+const listDepthLineCache = new Map()
+const listDepthLine = (depth) => {
+  let deco = listDepthLineCache.get(depth)
+  if (!deco) {
+    deco = Decoration.line({
+      class: `cm-md-list-depth-${depth}`,
+      attributes: {
+        style: `padding-inline-start:${depth * 1.6}em;text-indent:-1.6em;`,
+      },
+    })
+    listDepthLineCache.set(depth, deco)
+  }
+  return deco
+}
 const fenceMark = Decoration.mark({ class: "cm-md-fence-info" })
 const hiddenCodeFenceSource = Decoration.mark({ class: "cm-md-code-fence-source-hidden" })
 const hiddenHeadingSource = Decoration.mark({ class: "cm-md-heading-source-hidden" })
@@ -873,6 +891,7 @@ function buildDecorations(view) {
   const isActiveFence = (node) => activeFence != null
     && node.from <= activeFence.from && node.to >= activeFence.to
   const decoratedLines = new Set()
+  const listDepthPositions = new Set()
   const lineOnce = (pos, deco) => {
     const line = state.doc.lineAt(pos)
     const key = deco.spec.class + "@" + line.from
@@ -889,12 +908,58 @@ function buildDecorations(view) {
       pos = line.to + 1
     }
   }
-  // One blank source line between blocks is Markdown's normal separator; the
-  // preview swallows it and lets the next block's margin-top own that space.
-  // Mirror it here: the blank line directly above each block collapses to
-  // zero before headings (their padding-top owns the space) or resizes to
-  // the following block's semantic margin otherwise. Additional blank lines
-  // keep their natural source-line height in both surfaces.
+  const indentationColumns = (indentation) => {
+    let columns = 0
+    for (const character of indentation) {
+      columns = character === "\t"
+        ? columns + (4 - (columns % 4))
+        : columns + 1
+    }
+    return columns
+  }
+  // Repeated Tab can move a list-looking source line beyond the indentation
+  // depth that the CommonMark parser still recognizes as a ListItem. Keep the
+  // editor geometry stable at that boundary: ordinary indented code is left
+  // alone, while a line with an explicit list marker retains list styling.
+  const decorateRawIndentedListLine = (line, match) => {
+    const indentation = match[1]
+    const marker = match[2]
+    const separator = match[3]
+    const markerFrom = line.from + indentation.length
+    const markerTo = markerFrom + marker.length
+    const depth = Math.floor(indentationColumns(indentation) / 4) + 1
+
+    lineOnce(line.from, listItemLine)
+    lineOnce(line.from, listDepthLine(depth))
+    listDepthPositions.add(line.from)
+    if (line.number > 1
+        && markdownListMarker.test(state.doc.line(line.number - 1).text)) {
+      lineOnce(line.from, listItemGapLine)
+    }
+    if (indentation.length > 0) {
+      ranges.push(hide.range(line.from, markerFrom))
+    }
+
+    const isTask = /^[-+*]$/.test(marker)
+      && /^\s*\[[ xX]\](\s|$)/.test(line.text.slice(markerTo - line.from))
+    if (/^[-+*]$/.test(marker) && !isTask) {
+      if (touchesLineOf(markerFrom)) {
+        ranges.push(activeBulletDeco.range(markerFrom, markerTo))
+        if (separator.length > 0) {
+          ranges.push(hide.range(markerTo, markerTo + separator.length))
+        }
+      } else {
+        ranges.push(bulletDeco.range(
+          markerFrom,
+          markerTo + separator.length
+        ))
+      }
+    }
+  }
+  // The renderer restores every source blank line before applying semantic
+  // block margins. Keep the editor's final blank separator at one natural
+  // line plus those margins; earlier blank lines already retain their normal
+  // CodeMirror line height.
   const blankRunBefore = (pos) => {
     const line = state.doc.lineAt(pos)
     let first = line.number
@@ -903,11 +968,6 @@ function buildDecorations(view) {
     const stop = Math.max(first - 64, 1)
     while (first > stop && state.doc.line(first - 1).text.length === 0) first--
     return { line, first, count: line.number - first }
-  }
-  const collapseBlankBefore = (pos) => {
-    const run = blankRunBefore(pos)
-    if (run.count === 0) return
-    lineOnce(state.doc.line(run.line.number - 1).from, collapsedLine)
   }
   // iterate visits top-level blocks in document order, so the previous
   // block's name is a running variable; the tree is resolved only for the
@@ -944,21 +1004,18 @@ function buildDecorations(view) {
     if (run.count === 0) return
     const separator = state.doc.line(run.line.number - 1)
     if (run.first === 1) {
-      // Blank lines open the document. The preview strips the first block's
-      // margin entirely, so a single leading blank occupies no height.
-      lineOnce(separator.from, run.count === 1
-        ? collapsedLine
-        : blockSeparatorLine(blockMarginTop(node)))
+      lineOnce(
+        separator.from,
+        blockSeparatorLine(METRICS.line + blockMarginTop(node))
+      )
       return
     }
-    // hr is the only block with a margin-bottom. Adjacent margins collapse in
-    // the preview (max); literal blank-line spacers between them do not.
+    // hr is the only block with a margin-bottom. A visible blank-line spacer
+    // prevents adjacent margins from collapsing, so both sides contribute.
     const marginBottom = topBlockNameBefore(run.first) === "HorizontalRule"
       ? METRICS.hr : 0
     const marginTop = blockMarginTop(node)
-    const height = run.count === 1
-      ? Math.max(marginBottom, marginTop)
-      : marginBottom + marginTop
+    const height = METRICS.line + marginBottom + marginTop
     lineOnce(separator.from, blockSeparatorLine(height))
   }
 
@@ -1009,14 +1066,12 @@ function buildDecorations(view) {
         // --- Headings ------------------------------------------------
         const atx = name.match(/^ATXHeading(\d)$/)
         if (atx) {
-          collapseBlankBefore(node.from)
           lineOnce(node.from, HEADING_LINE[+atx[1]])
           if (!touchesLineOf(node.from)) lineOnce(node.from, inactiveHeadingLine)
           return
         }
         const setext = name.match(/^SetextHeading(\d)$/)
         if (setext) {
-          collapseBlankBefore(node.from)
           lineOnce(node.from, HEADING_LINE[+setext[1]])
           return
         }
@@ -1145,6 +1200,17 @@ function buildDecorations(view) {
           const isNested = listStack.length > 1
           if (!isFirstItem || isNested) lineOnce(node.from, listItemGapLine)
           eachLine(node.from, node.to, listItemLine)
+          lineOnce(node.from, listDepthLine(listStack.length))
+          listDepthPositions.add(state.doc.lineAt(node.from).from)
+          // Source indentation uses proportional-font space glyphs, which
+          // does not equal the rendered list's 1.6em nesting step. Hide that
+          // source-only prefix and let the semantic depth line own geometry.
+          const line = state.doc.lineAt(node.from)
+          const rawIndentedList = line.text.match(markdownListMarker)
+          const indentation = rawIndentedList?.[1] ?? ""
+          if (indentation.length > 0) {
+            ranges.push(hide.range(line.from, line.from + indentation.length))
+          }
           return
         }
         if (name === "ListMark") {
@@ -1153,11 +1219,17 @@ function buildDecorations(view) {
           // Task items (`- [ ]`) keep their literal marker; turning the dash
           // into a bullet dot leaves a confusing "• [ ]" hybrid.
           const isTask = /^\s*\[[ xX]\](\s|$)/.test(line.text.slice(node.to - line.from))
-          if ((mark === "-" || mark === "*" || mark === "+") && !isTask && !touchesLineOf(node.from)) {
-            // Swallow the following space too: the bullet widget is a fixed
-            // 1.6em box, so item text starts exactly at the list padding.
+          if ((mark === "-" || mark === "*" || mark === "+") && !isTask) {
+            // Both forms occupy the same fixed-width hanging box. Keep the
+            // active dash editable, but hide its source separator so the dash
+            // can sit at the rendered bullet position without moving text.
             const after = state.doc.sliceString(node.to, node.to + 1)
-            ranges.push(bulletDeco.range(node.from, node.to + (after === " " ? 1 : 0)))
+            if (touchesLineOf(node.from)) {
+              ranges.push(activeBulletDeco.range(node.from, node.to))
+              if (after === " ") ranges.push(hide.range(node.to, node.to + 1))
+            } else {
+              ranges.push(bulletDeco.range(node.from, node.to + (after === " " ? 1 : 0)))
+            }
           }
           return
         }
@@ -1183,6 +1255,16 @@ function buildDecorations(view) {
           let pos = node.from
           while (pos <= node.to) {
             const line = state.doc.lineAt(pos)
+            const rawIndentedList = name === "CodeBlock"
+              && decoratedLines.has(`${listItemLine.spec.class}@${line.from}`)
+              ? line.text.match(markdownListMarker)
+              : null
+            if (rawIndentedList) {
+              decorateRawIndentedListLine(line, rawIndentedList)
+              if (line.to >= node.to) break
+              pos = line.to + 1
+              continue
+            }
             if ((hidesOpeningFence && line.from === first.from)
                 || (hidesClosingFence && line.from === last.from)) {
               lineOnce(line.from, collapsedLine)
@@ -1233,6 +1315,25 @@ function buildDecorations(view) {
         if (name === "BulletList" || name === "OrderedList") listStack.pop()
       },
     })
+    // A deeply indented marker may be parsed as continuation content inside
+    // its ancestor ListItem rather than as a standalone CodeBlock. The parent
+    // already gives that line list typography; fill in the missing depth,
+    // marker, and gap decorations so the third and later Tabs do not jump.
+    let rawPos = from
+    while (rawPos <= to) {
+      const line = state.doc.lineAt(rawPos)
+      const hasListTypography = decoratedLines.has(
+        `${listItemLine.spec.class}@${line.from}`
+      )
+      if (hasListTypography && !listDepthPositions.has(line.from)) {
+        const rawIndentedList = line.text.match(markdownListMarker)
+        if (rawIndentedList) {
+          decorateRawIndentedListLine(line, rawIndentedList)
+        }
+      }
+      if (line.to >= to) break
+      rawPos = line.to + 1
+    }
   }
   return Decoration.set(ranges, true)
 }
@@ -1483,6 +1584,41 @@ function insertLink(view) {
   return true
 }
 
+// Markdown assigns semantic meaning to four leading spaces: headings,
+// paragraphs, tables, fences, and other top-level blocks become code blocks.
+// List items are different: keep each Tab as authored, including repeated
+// indentation, rather than imposing a maximum nesting depth in the editor.
+function indentMarkdownListItems(view) {
+  const selection = view.state.selection.main
+  const firstLine = view.state.doc.lineAt(selection.from)
+  let lastLine = view.state.doc.lineAt(selection.to)
+  if (!selection.empty
+      && selection.to === lastLine.from
+      && lastLine.number > firstLine.number) {
+    lastLine = view.state.doc.line(lastLine.number - 1)
+  }
+
+  const firstMatch = firstLine.text.match(markdownListMarker)
+  if (!firstMatch) {
+    // Within ordinary text, behave like a text editor and insert a tab at the
+    // caret. Guard the leading source margin:
+    // indenting a top-level Markdown block there would reinterpret it as an
+    // indented code block.
+    if (selection.empty) {
+      const offset = selection.head - firstLine.from
+      const leadingWhitespace = firstLine.text.match(/^[ \t]*/)?.[0].length || 0
+      if (offset > leadingWhitespace) return insertTab(view)
+    }
+    return true
+  }
+  const changes = []
+  for (let number = firstLine.number; number <= lastLine.number; number++) {
+    changes.push({ from: view.state.doc.line(number).from, insert: "    " })
+  }
+  dispatchBlockChanges(view, changes)
+  return true
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -1505,6 +1641,7 @@ window.MDEditor = {
           dropCursor(),
           EditorView.lineWrapping,
           EditorView.perLineTextDirection.of(true),
+          indentUnit.of("    "),
           directionLines,
           // Parse a leading `---` block as YAML frontmatter so its lines
           // never surface as a thematic break plus setext heading.
@@ -1521,6 +1658,7 @@ window.MDEditor = {
           keymap.of([
             { key: "Mod-b", run: toggleInlineMark("**") },
             { key: "Mod-i", run: toggleInlineMark("*") },
+            { key: "Tab", run: indentMarkdownListItems, shift: indentLess },
             ...markdownKeymap,
             ...defaultKeymap,
             ...historyKeymap,
