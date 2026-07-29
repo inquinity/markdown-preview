@@ -147,7 +147,12 @@ nonisolated enum MarkdownHTML {
             sourceLineOffset: sourceLineOffset
         )
         let headingsHTML = injectHeadingIDs(in: footnoteReferenceHTML + footnoteDefinitions.html)
-        let renderedBodyHTML = injectRTLDirection(in: headingsHTML)
+        // Direction inference scans every rendered block. Most documents
+        // contain no RTL text, so avoid walking the much larger generated
+        // HTML unless the Markdown could produce an RTL first character.
+        let renderedBodyHTML = sourceMayNeedRTLDirection(body)
+            ? injectRTLDirection(in: headingsHTML)
+            : headingsHTML
         let frontmatterHTML: String
         if let raw = frontmatter.raw,
            let format = frontmatter.format {
@@ -316,6 +321,26 @@ nonisolated enum MarkdownHTML {
         0x08A0...0x08FF, 0xFB50...0xFDFF, 0xFE70...0xFEFF
     ]
 
+    /// Over-inclusive by design: CommonMark decodes numeric character
+    /// references before formatting, so any `&#` might become RTL text.
+    /// False positives only take the existing slow path; false negatives
+    /// would skip direction inference.
+    private static func sourceMayNeedRTLDirection(_ source: String) -> Bool {
+        var previousWasAmpersand = false
+        for scalar in source.unicodeScalars {
+            if scalar.value >= 0x0590,
+               scalar.value <= 0xFEFF,
+               isRTL(scalar) {
+                return true
+            }
+            if previousWasAmpersand, scalar.value == 0x23 {
+                return true
+            }
+            previousWasAmpersand = scalar.value == 0x26
+        }
+        return false
+    }
+
     private static func injectRTLDirection(in html: String) -> String {
         let nsHtml = html as NSString
         let matches = rtlTagRegex.matches(in: html, range: NSRange(location: 0, length: nsHtml.length))
@@ -372,6 +397,10 @@ nonisolated enum MarkdownHTML {
 
     private static func isRTL(_ char: Character) -> Bool {
         guard let scalar = char.unicodeScalars.first else { return false }
+        return isRTL(scalar)
+    }
+
+    private static func isRTL(_ scalar: Unicode.Scalar) -> Bool {
         return rtlRanges.contains { $0.contains(scalar.value) }
     }
 
@@ -392,7 +421,6 @@ nonisolated enum MarkdownHTML {
     }
 
     private struct FootnoteReference {
-        let token: String
         let number: Int
         let ordinal: Int
     }
@@ -414,6 +442,10 @@ nonisolated enum MarkdownHTML {
     }()
 
     private static func extractFootnotes(from markdown: String) -> FootnoteExtraction {
+        guard markdown.contains("[^") else {
+            return FootnoteExtraction(markdown: markdown, definitions: [], references: [])
+        }
+
         let split = splitFootnoteDefinitions(from: markdown)
         var protected: [String] = []
 
@@ -451,17 +483,16 @@ nonisolated enum MarkdownHTML {
             let ordinal = (referenceOrdinalsByNumber[definition.number] ?? 0) + 1
             referenceOrdinalsByNumber[definition.number] = ordinal
             let token = "MdPreviewFootnoteRef\(references.count)Token"
-            references.append(FootnoteReference(token: token, number: definition.number, ordinal: ordinal))
+            references.append(FootnoteReference(number: definition.number, ordinal: ordinal))
             return token
         }
 
-        var restored = replacedReferences
-        for (i, original) in protected.enumerated() {
-            restored = restored.replacingOccurrences(
-                of: "MdPreviewFootnoteProtect\(i)Token",
-                with: original
-            )
-        }
+        let restored = restoreIndexedTokens(
+            in: replacedReferences,
+            prefix: "MdPreviewFootnoteProtect",
+            suffix: "Token",
+            replacements: protected
+        )
 
         return FootnoteExtraction(
             markdown: restored,
@@ -581,8 +612,7 @@ nonisolated enum MarkdownHTML {
     private static func renderFootnoteReferences(in html: String,
                                                  with footnotes: FootnoteExtraction) -> String {
         guard !footnotes.references.isEmpty else { return html }
-        var rendered = html
-        for reference in footnotes.references {
+        let replacements = footnotes.references.map { reference in
             let refID = footnoteReferenceID(number: reference.number, ordinal: reference.ordinal)
             let footnoteID = footnoteDefinitionID(number: reference.number)
             let accessibilityLabel = htmlEscape(String(
@@ -592,9 +622,14 @@ nonisolated enum MarkdownHTML {
             let replacement = """
             <sup class="footnote-ref"><a id="\(refID)" href="#\(footnoteID)" aria-label="\(accessibilityLabel)">\(reference.number)</a></sup>
             """
-            rendered = rendered.replacingOccurrences(of: reference.token, with: replacement)
+            return replacement
         }
-        return rendered
+        return restoreIndexedTokens(
+            in: html,
+            prefix: "MdPreviewFootnoteRef",
+            suffix: "Token",
+            replacements: replacements
+        )
     }
 
     private static func renderFootnoteDefinitions(
@@ -874,13 +909,12 @@ nonisolated enum MarkdownHTML {
             return "MdPreviewMathInline\(inlines.count)Token"
         }
 
-        var processed = afterInlineMath
-        for (i, original) in protected.enumerated() {
-            processed = processed.replacingOccurrences(
-                of: "MdPreviewProtect\(i)Token",
-                with: original
-            )
-        }
+        let processed = restoreIndexedTokens(
+            in: afterInlineMath,
+            prefix: "MdPreviewProtect",
+            suffix: "Token",
+            replacements: protected
+        )
 
         return MathExtraction(
             processedMarkdown: processed,
@@ -1432,14 +1466,29 @@ nonisolated enum MarkdownHTML {
                     const column = Number(cell.dataset.tableColumn);
                     const placeholder = `Column ${column + 1}`;
                     cell.dataset.placeholder = placeholder;
-                    if (!(cell.innerText || '').trim()) cell.textContent = '';
-                    const updateAccessibilityLabel = () => {
-                        if ((cell.innerText || '').trim()) cell.removeAttribute('aria-label');
-                        else cell.setAttribute('aria-label', placeholder);
-                    };
-                    updateAccessibilityLabel();
-                    cell.addEventListener('input', updateAccessibilityLabel);
+                    // `innerText` forces layout when the table is already in
+                    // the live document. Header emptiness only depends on the
+                    // authored content, so `textContent` is sufficient here.
+                    if (!(cell.textContent || '').trim()) cell.textContent = '';
+                    updateTableHeaderAccessibilityLabel(cell);
                 });
+            });
+        }
+
+        function updateTableHeaderAccessibilityLabel(cell) {
+            const placeholder = cell.dataset.placeholder;
+            if (!placeholder) return;
+            if ((cell.textContent || '').trim()) cell.removeAttribute('aria-label');
+            else cell.setAttribute('aria-label', placeholder);
+        }
+
+        if (hasHostBridge) {
+            // One delegated listener covers both initial and morphed tables.
+            document.addEventListener('input', (event) => {
+                const cell = event.target.closest?.(
+                    '.md-table-editor th[data-table-column]'
+                );
+                if (cell) updateTableHeaderAccessibilityLabel(cell);
             });
         }
 
@@ -1652,7 +1701,6 @@ nonisolated enum MarkdownHTML {
             ADD_ATTR: ['target'],
             ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|md-asset):|[^a-z]|[a-z+.\\-]+(?:[^a-z+.\\-:]|$))/i
         };
-
         function sanitize(html) {
             if (typeof html !== 'string') return '';
             if (typeof DOMPurify === 'undefined' || !DOMPurify.sanitize) {
@@ -2093,6 +2141,51 @@ nonisolated enum MarkdownHTML {
             cursor = match.range.location + match.range.length
         }
         result += nsSource.substring(from: cursor)
+        return result
+    }
+
+    /// Replaces generated `prefix + decimal index + suffix` placeholders in a
+    /// single forward pass. Re-running `replacingOccurrences` once per token
+    /// made documents with many code spans, code fences, or footnotes scale
+    /// quadratically because each restoration rescanned the whole document.
+    private static func restoreIndexedTokens(in source: String,
+                                             prefix: String,
+                                             suffix: String,
+                                             replacements: [String]) -> String {
+        guard !replacements.isEmpty, source.contains(prefix) else { return source }
+
+        var result = ""
+        result.reserveCapacity(source.count)
+        var cursor = source.startIndex
+
+        while let tokenStart = source.range(
+            of: prefix,
+            range: cursor..<source.endIndex
+        ) {
+            result.append(contentsOf: source[cursor..<tokenStart.lowerBound])
+
+            var digitsEnd = tokenStart.upperBound
+            while digitsEnd < source.endIndex, source[digitsEnd].isNumber {
+                source.formIndex(after: &digitsEnd)
+            }
+
+            guard digitsEnd > tokenStart.upperBound,
+                  source[digitsEnd...].hasPrefix(suffix),
+                  let index = Int(source[tokenStart.upperBound..<digitsEnd]),
+                  replacements.indices.contains(index) else {
+                // This prefix can appear in authored Markdown. Preserve it and
+                // continue searching after the prefix instead of consuming an
+                // unrelated suffix later in the document.
+                result.append(contentsOf: source[tokenStart.lowerBound..<tokenStart.upperBound])
+                cursor = tokenStart.upperBound
+                continue
+            }
+
+            result.append(replacements[index])
+            cursor = source.index(digitsEnd, offsetBy: suffix.count)
+        }
+
+        result.append(contentsOf: source[cursor...])
         return result
     }
 

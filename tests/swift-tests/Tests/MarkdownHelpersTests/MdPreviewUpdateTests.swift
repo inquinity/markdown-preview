@@ -175,15 +175,146 @@ final class MdPreviewUpdateTests: XCTestCase {
         XCTAssertEqual(codeSurvived, true)
     }
 
+    @MainActor
+    func testTableHeaderPlaceholderAccessibilityUsesDelegatedUpdates() async throws {
+        let webView = try await loadHarness(
+            articleAttributes: "",
+            stubsWebKitMessageHandler: true
+        )
+        let article = MarkdownHTML.render(
+            markdown: """
+            | | Name |
+            | --- | --- |
+            | First | Ada |
+            """,
+            vendorLoading: .lazy
+        ).articleHTML
+        let document = MarkdownHTML.javaScriptStringLiteral(article)
+
+        // Instrument the WebKit APIs that caused the regression. Unlike a
+        // source-string assertion, these counters remain valid if functions
+        // or event-handler registration are reordered.
+        _ = try await webView.evaluateJavaScript("""
+        (() => {
+            window.__tableHeaderInnerTextReads = 0;
+            window.__tableCellInputListenerRegistrations = 0;
+
+            const innerText = Object.getOwnPropertyDescriptor(
+                HTMLElement.prototype,
+                'innerText'
+            );
+            if (!innerText || typeof innerText.get !== 'function') {
+                throw new Error('HTMLElement.innerText getter unavailable');
+            }
+            const patchedInnerText = {
+                configurable: innerText.configurable,
+                enumerable: innerText.enumerable,
+                get() {
+                    if (this.matches?.('th[data-table-column]')) {
+                        window.__tableHeaderInnerTextReads += 1;
+                    }
+                    return innerText.get.call(this);
+                }
+            };
+            if (innerText.set) {
+                patchedInnerText.set = function (value) {
+                    return innerText.set.call(this, value);
+                };
+            }
+            Object.defineProperty(HTMLElement.prototype, 'innerText', patchedInnerText);
+
+            const addEventListener = EventTarget.prototype.addEventListener;
+            EventTarget.prototype.addEventListener = function (type, listener, options) {
+                if (type === 'input' && this instanceof HTMLTableCellElement) {
+                    window.__tableCellInputListenerRegistrations += 1;
+                }
+                return addEventListener.call(this, type, listener, options);
+            };
+            return true;
+        })()
+        """)
+
+        // Exercise both the initial populate and the morph path. Table setup
+        // must stay idempotent and the delegated input handler must keep the
+        // placeholder's accessibility label in sync.
+        _ = try await webView.evaluateJavaScript(
+            "window.MdPreview.update(\(document)); true"
+        )
+        _ = try await webView.evaluateJavaScript(
+            "window.MdPreview.update(\(document)); true"
+        )
+
+        let result = try await webView.evaluateJavaScript("""
+        (() => {
+            const headers = document.querySelectorAll(
+                '.md-table-editor th[data-table-column]'
+            );
+            const empty = headers[0];
+            const named = headers[1];
+            const initialEmptyLabel = empty.getAttribute('aria-label');
+            const initialNamedLabel = named.getAttribute('aria-label');
+
+            empty.textContent = 'Renamed';
+            empty.dispatchEvent(new Event('input', { bubbles: true }));
+            const renamedLabel = empty.getAttribute('aria-label');
+
+            empty.textContent = '';
+            empty.dispatchEvent(new Event('input', { bubbles: true }));
+            const restoredLabel = empty.getAttribute('aria-label');
+
+            return JSON.stringify({
+                editorCount: document.querySelectorAll('.md-table-editor').length,
+                scrollCount: document.querySelectorAll('.md-table-scroll').length,
+                headerCount: headers.length,
+                headerInnerTextReads: window.__tableHeaderInnerTextReads,
+                tableCellInputListenerRegistrations:
+                    window.__tableCellInputListenerRegistrations,
+                placeholder: empty.dataset.placeholder || '',
+                initialEmptyLabel,
+                initialNamedLabel,
+                renamedLabel,
+                restoredLabel,
+            });
+        })()
+        """)
+        let json = try XCTUnwrap(result as? String)
+        let state = try JSONDecoder().decode(TableHeaderPlaceholderState.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.editorCount, 1, json)
+        XCTAssertEqual(state.scrollCount, 1, json)
+        XCTAssertEqual(state.headerCount, 2, json)
+        XCTAssertEqual(state.headerInnerTextReads, 0, json)
+        XCTAssertEqual(state.tableCellInputListenerRegistrations, 0, json)
+        XCTAssertEqual(state.placeholder, "Column 1", json)
+        XCTAssertEqual(state.initialEmptyLabel, "Column 1", json)
+        XCTAssertNil(state.initialNamedLabel, json)
+        XCTAssertNil(state.renamedLabel, json)
+        XCTAssertEqual(state.restoredLabel, "Column 1", json)
+    }
+
     /// Builds the harness page — bundled DOMPurify + morphdom, the shipped
     /// host bridge, and fake renderers that mimic the real markers: stash
     /// `__mdSrc`, set the done flag, replace the children with a sentinel,
     /// and count runs so a destructive re-render (fresh node, count reset)
     /// is detectable.
     @MainActor
-    private func loadHarness(articleAttributes: String) async throws -> WKWebView {
+    private func loadHarness(
+        articleAttributes: String,
+        stubsWebKitMessageHandler: Bool = false
+    ) async throws -> WKWebView {
         let purifyJS = try TestVendor.script("md-preview/Vendor/DOMPurify/purify.min.js")
         let morphdomJS = try TestVendor.script("md-preview/Vendor/Morphdom/morphdom.min.js")
+        let webKitMessageHandlerStub = stubsWebKitMessageHandler
+            ? """
+              <script>
+              window.webkit = {
+                  messageHandlers: {
+                      mdPreviewHost: { postMessage() {} }
+                  }
+              };
+              </script>
+              """
+            : ""
         let fakeRenderers = """
         <script>
         (() => {
@@ -217,6 +348,7 @@ final class MdPreviewUpdateTests: XCTestCase {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <script>\(purifyJS)</script>
         <script>\(morphdomJS)</script>
+        \(webKitMessageHandlerStub)
         \(MarkdownHTML.hostBridgeScript)
         \(fakeRenderers)
         </head><body>
@@ -291,4 +423,17 @@ private struct WarmupArticleState: Decodable {
     private enum CodingKeys: String, CodingKey {
         case warmup, opacity, keyedBlocks, paragraphText
     }
+}
+
+private struct TableHeaderPlaceholderState: Decodable {
+    let editorCount: Int
+    let scrollCount: Int
+    let headerCount: Int
+    let headerInnerTextReads: Int
+    let tableCellInputListenerRegistrations: Int
+    let placeholder: String
+    let initialEmptyLabel: String?
+    let initialNamedLabel: String?
+    let renamedLabel: String?
+    let restoredLabel: String?
 }

@@ -287,25 +287,19 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
         forMainFrameOnly: true
     )
 
-    /// Synthetic markdown that flips every renderer flag (math + mermaid +
-    /// code). Loaded into the WebView at launch so the heavy vendor JS is
-    /// parsed and executed before the user picks a real file. Every later
-    /// `display()` call then hits the fast-path (innerHTML swap + reapplier
-    /// sweep) instead of paying for a full reload.
-    private static let warmupMarkdown = """
-    $x$
-
-    ```mermaid
-    graph TD; A-->B
-    ```
-
-    ```typescript
-    let x: string = 'warmup';
-    ```
-    """
+    /// Warm only the stable preview shell. Plain documents can populate this
+    /// ready page immediately, while rich documents deliberately take a fresh
+    /// lazy-vendor load so their text paints before KaTeX, Mermaid, or
+    /// highlight.js work and the idle page does not retain those runtimes.
+    private static let warmupMarkdown = ""
 
     private func warmupVendors() {
-        guard !isPageReady, loadedFingerprint == nil else { return }
+        // Opening a real document during launch takes priority over
+        // speculative WebKit work, which otherwise competes with the first
+        // Markdown render on cold open.
+        guard renderGeneration == 0,
+              !isPageReady,
+              loadedFingerprint == nil else { return }
         let baseHref = MarkdownAssetResolution.rootBaseHref
         let markdown = Self.warmupMarkdown
         let contentWidth = ContentWidthSetting.current.renderWidth
@@ -321,8 +315,10 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
 
     private func applyWarmup(_ rendered: MarkdownHTML.RenderedHTML) {
         // Another display() may have arrived during the off-main render and
-        // already swapped the page in — don't stomp it with the warmup doc.
-        guard !isPageReady, loadedFingerprint == nil else { return }
+        // taken priority over the speculative shell.
+        guard renderGeneration == 0,
+              !isPageReady,
+              loadedFingerprint == nil else { return }
         loadedFingerprint = RendererFingerprint(
             math: rendered.containsMath,
             mermaid: rendered.containsMermaid,
@@ -372,7 +368,16 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
                                             markdown: markdown,
                                             assetBaseHref: baseHref,
                                             contentWidth: contentWidth)
+            #if DEBUG
+            let renderFinishedAt = DispatchTime.now().uptimeNanoseconds
+            await self?.applyDisplayDebug(
+                rendered,
+                generation: generation,
+                renderFinishedAt: renderFinishedAt
+            )
+            #else
             await self?.applyDisplay(rendered, generation: generation)
+            #endif
         }
     }
 
@@ -401,6 +406,22 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
         return rendered
     }
 
+    #if DEBUG
+    private func applyDisplayDebug(_ rendered: MarkdownHTML.RenderedHTML,
+                                   generation: UInt64,
+                                   renderFinishedAt: UInt64) {
+        let enteredAt = DispatchTime.now().uptimeNanoseconds
+        Logger.perf.debug(
+            "[mdp-perf-swift] render finish -> MainActor +\(Self.debugMilliseconds(from: renderFinishedAt, to: enteredAt), privacy: .public)ms"
+        )
+        applyDisplay(rendered, generation: generation)
+        let returnedAt = DispatchTime.now().uptimeNanoseconds
+        Logger.perf.debug(
+            "[mdp-perf-swift] applyDisplay sync +\(Self.debugMilliseconds(from: enteredAt, to: returnedAt), privacy: .public)ms"
+        )
+    }
+    #endif
+
     private func applyDisplay(_ rendered: MarkdownHTML.RenderedHTML,
                               generation: UInt64) {
         // A newer display() bumped the generation while this render was
@@ -414,22 +435,40 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
 
         // Fast path: the loaded page already has every renderer the new doc
         // needs — swap the article body via JS instead of reloading the
-        // WKWebView (which would re-parse and re-execute the multi-MB vendor
-        // bundles). The launch-time warmup loads both vendors, so any
-        // subsequent file with any subset of renderers fast-paths into it.
+        // WKWebView. The launch-time shell intentionally has no rich renderers,
+        // so a first math/Mermaid/code document gets a progressive lazy load.
         if isPageReady, let loaded = loadedFingerprint, loaded.covers(fingerprint) {
-            let payload = javaScriptStringLiteral(rendered.articleHTML)
             // The loaded page keeps its original <base> across body swaps —
             // pass the current document's base along so relative links keep
             // resolving against the right folder after switching files.
-            let base = javaScriptStringLiteral(currentBaseHref)
-            webView.evaluateJavaScript("window.MdPreview && MdPreview.update(\(payload), { baseHref: \(base) });") { [weak self] _, _ in
+            webView.callAsyncJavaScript(
+                """
+                if (!window.MdPreview) return false;
+                window.MdPreview.update(articleHTML, { baseHref });
+                return true;
+                """,
+                arguments: [
+                    "articleHTML": rendered.articleHTML,
+                    "baseHref": currentBaseHref,
+                ],
+                in: nil,
+                in: .page
+            ) { [weak self] _ in
                 self?.contentDidReplace?()
             }
             return
         }
 
+        #if DEBUG
+        let loadStartedAt = DispatchTime.now().uptimeNanoseconds
         webView.loadHTMLString(rendered.html, baseURL: nil)
+        let loadReturnedAt = DispatchTime.now().uptimeNanoseconds
+        Logger.perf.debug(
+            "[mdp-perf-swift] loadHTMLString call +\(Self.debugMilliseconds(from: loadStartedAt, to: loadReturnedAt), privacy: .public)ms"
+        )
+        #else
+        webView.loadHTMLString(rendered.html, baseURL: nil)
+        #endif
         loadedFingerprint = fingerprint
         isPageReady = false
     }
@@ -448,6 +487,13 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
         isPageReady = false
         reloadPreview()
     }
+
+    #if DEBUG
+    private nonisolated static func debugMilliseconds(from start: UInt64,
+                                                      to end: UInt64) -> Int {
+        Int((Double(end - start) / 1_000_000).rounded())
+    }
+    #endif
 
     fileprivate func didReceiveHostMessage(_ body: Any) {
         guard let dict = body as? [String: Any],
