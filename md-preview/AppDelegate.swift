@@ -54,27 +54,7 @@ private extension String {
     }
 }
 
-private enum AppAppearanceMode: String, CaseIterable {
-    case automatic
-    case light
-    case dark
-
-    private static let defaultsKey = "MarkdownPreview.appearance"
-
-    static var current: AppAppearanceMode {
-        get {
-            UserDefaults.standard.string(forKey: defaultsKey)
-                .flatMap(AppAppearanceMode.init(rawValue:)) ?? .automatic
-        }
-        set {
-            if newValue == .automatic {
-                UserDefaults.standard.removeObject(forKey: defaultsKey)
-            } else {
-                UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey)
-            }
-        }
-    }
-
+private extension AppearanceMode {
     var title: String {
         switch self {
         case .automatic: return NSLocalizedString("Automatic", comment: "Appearance mode")
@@ -127,7 +107,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         CrashReporter.start()
-        applyAppearanceMode(AppAppearanceMode.current, reloadPreviews: false)
+        let appearanceMode = AppearanceMode.migrateLegacyValue()
+        applyAppearanceMode(appearanceMode, reloadPreviews: false)
         installAppearanceMenuItems()
         installContentWidthMenuItems()
         installSidebarViewMenuItems()
@@ -283,10 +264,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func selectAppearanceMode(_ sender: NSMenuItem) {
         guard let rawValue = sender.representedObject as? String,
-              let mode = AppAppearanceMode(rawValue: rawValue),
-              mode != AppAppearanceMode.current else { return }
+              let mode = AppearanceMode(rawValue: rawValue),
+              mode != AppearanceMode.current else { return }
 
-        AppAppearanceMode.current = mode
+        AppearanceMode.current = mode
         applyAppearanceMode(mode, reloadPreviews: true)
     }
 
@@ -817,7 +798,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let submenu = NSMenu(title: appearanceTitle)
-        for mode in AppAppearanceMode.allCases {
+        for mode in AppearanceMode.allCases {
             let item = NSMenuItem(title: mode.title,
                                   action: #selector(selectAppearanceMode(_:)),
                                   keyEquivalent: "")
@@ -878,7 +859,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         syncContentWidthMenuState()
     }
 
-    private func applyAppearanceMode(_ mode: AppAppearanceMode, reloadPreviews: Bool) {
+    private func applyAppearanceMode(_ mode: AppearanceMode, reloadPreviews: Bool) {
         let appearance = mode.appearance
         NSApp.appearance = appearance
         for window in NSApp.windows {
@@ -891,7 +872,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func syncAppearanceMenuState() {
-        let mode = AppAppearanceMode.current
+        let mode = AppearanceMode.current
         automaticAppearanceMenuItem?.state = mode == .automatic ? .on : .off
         lightAppearanceMenuItem?.state = mode == .light ? .on : .off
         darkAppearanceMenuItem?.state = mode == .dark ? .on : .off
