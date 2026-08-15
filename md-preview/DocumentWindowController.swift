@@ -23,6 +23,7 @@ extension NSToolbarItem.Identifier {
     static let zoom = NSToolbarItem.Identifier("Zoom")
     static let editDocument = NSToolbarItem.Identifier("EditDocument")
     static let navigation = NSToolbarItem.Identifier("Navigation")
+    static let alwaysOnTop = NSToolbarItem.Identifier("AlwaysOnTop")
 }
 
 private extension Array where Element == NSToolbarItem.Identifier {
@@ -35,7 +36,11 @@ private extension Array where Element == NSToolbarItem.Identifier {
     }
 }
 
-final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSSharingServicePickerToolbarItemDelegate, NSSearchFieldDelegate, NSMenuDelegate {
+// `NSMenuItemValidation` is load-bearing, not tidiness. `validateMenuItem` is only
+// reachable from AppKit through an @objc entry point, and `NSWindowController` has
+// no such method to override, so without this conformance the implementation below
+// is never called: no menu item ever gets its state, and the failure is silent.
+final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSSharingServicePickerToolbarItemDelegate, NSSearchFieldDelegate, NSMenuDelegate, NSMenuItemValidation {
 
     private enum NavigationIntent {
         case normal
@@ -81,6 +86,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
     private weak var openInLLMItem: NSMenuToolbarItem?
     private weak var inspectorItem: NSToolbarItem?
     private weak var inspectorButton: NSButton?
+    private var isAlwaysOnTop = false
+    private weak var alwaysOnTopButton: NSButton?
     private weak var editItem: NSToolbarItem?
     private weak var editButton: NSButton?
     private var editorChangeRevision = 0
@@ -170,6 +177,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
 
     private func setupWindow() {
         documentWindow.styleMask.insert(.fullSizeContentView)
+        // Declared explicitly rather than left to AppKit's implicit default,
+        // because Always on Top raises the window above the normal level and a
+        // window that has not stated its full-screen capability is the first
+        // thing AppKit stops offering Enter Full Screen to.
+        documentWindow.collectionBehavior.insert(.fullScreenPrimary)
         documentWindow.delegate = self
         documentWindow.tabbingIdentifier = "MarkdownDocumentWindow"
         documentWindow.tabbingMode = Self.nextWindowDeclinesTabbing ? .disallowed : .automatic
@@ -252,6 +264,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
     func windowWillClose(_ notification: Notification) {
         fileWatcher?.cancel()
         fileWatcher = nil
+    }
+
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        reapplyAlwaysOnTopLevel(isFullScreen: true)
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        reapplyAlwaysOnTopLevel(isFullScreen: false)
     }
 
     func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
@@ -495,7 +515,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
             .exportPDF,
             .exportDocument,
             .copyMarkdown,
-            .zoom
+            .zoom,
+            .alwaysOnTop
         ]
         if hasLLMTargetsAvailable {
             identifiers.insertAfterOpenActions(.openInLLM)
@@ -516,6 +537,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
             return makeOpenInLLMItem()
         case .editDocument: return makeEditItem()
         case .inspector: return makeInspectorItem()
+        case .alwaysOnTop: return makeAlwaysOnTopItem()
         case .share: return makeShareItem()
         case .search: return makeSearchItem()
         case .printDocument: return makePrintItem()
@@ -716,9 +738,67 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         syncSidebarMenuState()
     }
 
+    @objc func toggleAlwaysOnTop(_ sender: Any?) {
+        setAlwaysOnTop(!isAlwaysOnTop)
+    }
+
+    private func setAlwaysOnTop(_ pinned: Bool) {
+        let windows = AlwaysOnTopPolicy.affectedWindows(toggling: documentWindow,
+                                                        tabGroup: documentWindow.tabbedWindows)
+        for window in windows {
+            // Read each window's live full-screen state rather than assuming the
+            // reader pinned from a normal window: pinning while already in full
+            // screen must light the toggle without dropping out of full screen.
+            window.level = NSWindow.Level(
+                rawValue: AlwaysOnTopPolicy.windowLevel(
+                    isPinned: pinned,
+                    isFullScreen: window.styleMask.contains(.fullScreen)
+                )
+            )
+            (window.windowController as? DocumentWindowController)?.recordAlwaysOnTop(pinned)
+        }
+    }
+
+    /// Reapplies the level for a full-screen transition. `isAlwaysOnTop` is the
+    /// reader's intent and is deliberately left untouched, so the toolbar toggle
+    /// stays lit across the transition and the window floats again on the way out.
+    private func reapplyAlwaysOnTopLevel(isFullScreen: Bool) {
+        documentWindow.level = NSWindow.Level(
+            rawValue: AlwaysOnTopPolicy.windowLevel(isPinned: isAlwaysOnTop,
+                                                    isFullScreen: isFullScreen)
+        )
+    }
+
+    /// Stores the pinned state and refreshes the toolbar toggle. Applied to
+    /// every window in the tab group so each tab agrees with the group's level.
+    private func recordAlwaysOnTop(_ pinned: Bool) {
+        isAlwaysOnTop = pinned
+        alwaysOnTopButton?.state = pinned ? .on : .off
+    }
+
+    /// The pin icon doubles as the state indicator. An `NSMenuItem` draws its
+    /// image and its check mark in the same leading slot, so beside an icon the
+    /// tick is easy to miss and the item reads as neither on nor off. Filling
+    /// the pin makes the state legible at a glance; `state` is still set, so
+    /// VoiceOver and the menu's own semantics stay correct.
+    private static func alwaysOnTopMenuImage(isPinned: Bool) -> NSImage? {
+        let image = NSImage(
+            systemSymbolName: isPinned ? "pin.fill" : "pin",
+            accessibilityDescription: NSLocalizedString("Always on Top",
+                                                        comment: "Always on Top menu item")
+        )
+        image?.isTemplate = true
+        return image
+    }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(saveDocument(_:)) {
             return isEditing
+        }
+        if menuItem.action == #selector(toggleAlwaysOnTop(_:)) {
+            menuItem.state = isAlwaysOnTop ? .on : .off
+            menuItem.image = Self.alwaysOnTopMenuImage(isPinned: isAlwaysOnTop)
+            return true
         }
         syncSidebarMenuState()
         return true
@@ -755,6 +835,47 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         inspectorItem = item
         refreshInspectorToggleItem()
         return item
+    }
+
+    private func makeAlwaysOnTopItem() -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: .alwaysOnTop)
+        let alwaysOnTop = NSLocalizedString("Always on Top", comment: "Always on Top toolbar item label")
+        item.label = alwaysOnTop
+        item.paletteLabel = alwaysOnTop
+        item.toolTip = NSLocalizedString("Keep this window in front of other apps",
+                                         comment: "Always on Top toolbar item tooltip")
+
+        let button = NSButton(image: alwaysOnTopImage(),
+                              target: self,
+                              action: #selector(toggleAlwaysOnTop(_:)))
+        button.setButtonType(.pushOnPushOff)
+        button.state = isAlwaysOnTop ? .on : .off
+        button.toolTip = item.toolTip
+        button.translatesAutoresizingMaskIntoConstraints = false
+
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
+            button.topAnchor.constraint(equalTo: container.topAnchor),
+            button.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -2),
+            button.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            button.heightAnchor.constraint(equalToConstant: 32),
+            container.widthAnchor.constraint(equalToConstant: 36),
+            container.heightAnchor.constraint(equalToConstant: 32)
+        ])
+
+        item.view = container
+        alwaysOnTopButton = button
+        return item
+    }
+
+    private func alwaysOnTopImage() -> NSImage {
+        let image = NSImage(systemSymbolName: "pin",
+                            accessibilityDescription: NSLocalizedString("Always on Top", comment: "Always on Top toolbar image")) ?? NSImage()
+        image.isTemplate = true
+        return image
     }
 
     private func makeShareItem() -> NSToolbarItem {
