@@ -15,6 +15,13 @@
 "Large" = "Large";
 "Content width" = "Content width";
 "Zooming a document window with ⌘+ and ⌘− changes this same size." = "Zooming a document window with ⌘+ and ⌘− changes this same size.";
+"Editing" = "Editing";
+"Automatic saving" = "Automatic saving";
+"Save edited documents periodically." = "Save edited documents periodically.";
+"Automatic saving runs while a document has unsaved edits." = "Automatic saving runs while a document has unsaved edits.";
+"30 seconds" = "30 seconds";
+"1 minute" = "1 minute";
+"%d minutes" = "%d minutes";
 "Hand-off" = "Hand-off";
 "Open documents in" = "Open documents in";
 "AI apps" = "AI apps";
@@ -170,6 +177,7 @@
 
 /* Document state and save dialogs */
 "Edited" = "Edited";
+"Auto-save failed" = "Auto-save failed";
 "Do you want to save your changes?" = "Do you want to save your changes?";
 "this document" = "this document";
 "Your changes to %@ will be lost if you don’t save them." = "Your changes to %@ will be lost if you don’t save them.";

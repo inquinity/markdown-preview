@@ -322,6 +322,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SettingsModel.shared.refreshFromExternalSources()
     }
 
+    func applyAutoSaveIntervalSetting(_ minutes: Int) {
+        AutoSaveSetting.store(minutes: minutes)
+        NSDocumentController.shared.documents
+            .flatMap(\.windowControllers)
+            .compactMap { $0 as? DocumentWindowController }
+            .forEach { $0.applyAutoSaveIntervalSetting() }
+    }
+
     func installCommandLineToolsFromSettings() {
         installCommandLineTools(nil)
     }

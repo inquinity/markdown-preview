@@ -51,6 +51,19 @@ final class SettingsModel {
         }
     }
 
+    var autoSaveIntervalMinutes: Int {
+        didSet {
+            let normalized = AutoSaveSetting.clampedMinutes(autoSaveIntervalMinutes)
+            guard normalized == autoSaveIntervalMinutes else {
+                autoSaveIntervalMinutes = normalized
+                return
+            }
+            guard !isRestoringExternalValues,
+                  autoSaveIntervalMinutes != oldValue else { return }
+            appDelegate?.applyAutoSaveIntervalSetting(autoSaveIntervalMinutes)
+        }
+    }
+
     /// Optional because ⌘+ / ⌘− can leave the stored zoom between the named
     /// stops; the picker then shows nothing selected rather than lying.
     var textSize: TextSizeSetting? {
@@ -131,6 +144,7 @@ final class SettingsModel {
         let updater = (NSApp.delegate as? AppDelegate)?.updaterController.updater
         appearance = AppearanceMode.current
         contentWidth = ContentWidthSetting.current
+        autoSaveIntervalMinutes = AutoSaveSetting.currentMinutes
         textSize = TextSizeSetting.current
         documentFont = DocumentFontSetting.current
         isAlwaysOnTop = AlwaysOnTopPolicy.isEnabled
@@ -181,6 +195,7 @@ final class SettingsModel {
 
         appearance = AppearanceMode.current
         contentWidth = ContentWidthSetting.current
+        autoSaveIntervalMinutes = AutoSaveSetting.currentMinutes
         textSize = TextSizeSetting.current
         documentFont = DocumentFontSetting.current
         isAlwaysOnTop = AlwaysOnTopPolicy.isEnabled
@@ -322,6 +337,29 @@ struct GeneralSettingsView: View {
                 }
             } header: {
                 Text(L("Windows"))
+            }
+
+            Section {
+                LabeledContent {
+                    Picker("", selection: $model.autoSaveIntervalMinutes) {
+                        Text(L("Never")).tag(AutoSaveSetting.disabledMinutes)
+                        Text(L("30 seconds")).tag(AutoSaveSetting.thirtySeconds)
+                        Text(L("1 minute")).tag(1)
+                        ForEach([5, 10, 15, 30, 60], id: \.self) { minutes in
+                            Text(String(format: L("%d minutes"), minutes))
+                                .tag(minutes)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                } label: {
+                    Text(L("Automatic saving"))
+                    Text(L("Save edited documents periodically."))
+                }
+            } header: {
+                Text(L("Editing"))
+            } footer: {
+                Text(L("Automatic saving runs while a document has unsaved edits."))
             }
 
             Section {
