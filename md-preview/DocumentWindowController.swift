@@ -127,6 +127,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
     }
     private weak var editAccessory: NSTitlebarAccessoryViewController?
+    /// The native-style line under the formatting bar while the window is
+    /// themed — the .hard scroll edge that normally draws it would paint an
+    /// opaque system strip over the theme color, so the line is drawn here
+    /// and the edge stays frosted.
+    private weak var editAccessoryHairline: NSView?
     private weak var copyItem: NSToolbarItem?
     private var copyFeedbackWork: DispatchWorkItem?
     private weak var searchField: NSSearchField?
@@ -230,7 +235,84 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         documentWindow.toolbar = toolbar
         documentWindow.toolbarStyle = .automatic
 
+        // After installFindBar: the theme pass styles the find bar's
+        // scroll-edge preference (the hidden accessory's .hard is what
+        // draws the classic opaque toolbar backdrop when unthemed), and
+        // with no patrol re-applying it, ordering is the only chance.
         installFindBar()
+        applyWindowBackgroundTheme()
+    }
+
+    /// Applies the user's theme colors to this window: the native window
+    /// background plus the preview and editor pages. Also run at setup so
+    /// new windows start themed.
+
+    func applyThemeColorsSetting() {
+        applyWindowBackgroundTheme()
+        mainSplit?.applyThemeColors()
+    }
+
+    /// Whether the ACTIVE appearance scheme has a window background
+    /// override. Chrome suppression without a matching tint exposes the
+    /// stock fills, so every chrome treatment gates on this, not on
+    /// "either scheme customized".
+    private var activeSchemeThemed: Bool {
+        let isDark = documentWindow.effectiveAppearance
+            .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return ThemeColorsSetting.current
+            .hasWindowBackgroundOverride(for: isDark ? .dark : .light)
+    }
+
+    /// The full-window background. `DocumentBackgroundView` paints the
+    /// content area; this covers what remains — the title-bar region and
+    /// resize flashes — with a dynamic color so Automatic appearance keeps
+    /// flipping it without another pass.
+    ///
+    /// Full screen deliberately keeps the STANDARD system chrome even when
+    /// themed: the full-screen glass surfaces (sidebar card, reveal bar)
+    /// sample the space wallpaper and render white over a transparent
+    /// themed titlebar (macOS 26, FB20291636 family), and neutralizing
+    /// that required patrolling private view classes and layer trees. Not
+    /// worth the fragility — the content and sidebar body stay themed in
+    /// full screen; only the chrome is native there.
+    private func applyWindowBackgroundTheme() {
+        // The dynamic background color is public API and applies in every
+        // window state — full screen included, where it tints whatever
+        // native surfaces sample the window. Only the CHROME treatment
+        // below is gated off in full screen.
+        documentWindow.backgroundColor = NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            return ThemeColorsSetting.current.color(
+                .windowBackground, isDark ? .dark : .light
+            ) ?? .windowBackgroundColor
+        }
+        let themed = activeSchemeThemed
+            && !documentWindow.styleMask.contains(.fullScreen)
+        // A hidden accessory's scroll-edge preference still drives the
+        // titlebar backdrop, so the find bar's .hard must follow the theme
+        // while the bar is hidden — otherwise it paints an opaque strip over
+        // a themed background.
+        if #available(macOS 26.1, *) {
+            if let accessory = findBarAccessory, accessory.isHidden {
+                accessory.preferredScrollEdgeEffectStyle = themed ? .automatic : .hard
+            }
+            editAccessory?.preferredScrollEdgeEffectStyle = themed ? .automatic : .hard
+        }
+        editAccessoryHairline?.isHidden = !themed
+        // Automatic resolves to a shadow under the toolbar; over the flat
+        // theme color it renders as a clipped gray band between the toolbar
+        // and the formatting bar. The themed chrome draws its own hairlines.
+        documentWindow.titlebarSeparatorStyle = themed ? .none : .automatic
+        guard themed else {
+            documentWindow.titlebarAppearsTransparent = false
+            return
+        }
+        // Safari's recipe: the titlebar goes transparent so the window
+        // background color runs to the top edge, and the web view is told
+        // (via obscuredContentInsets, in ContentViewController) which strip
+        // the toolbar obscures so WebKit lays out below it and frosts
+        // content that scrolls under.
+        documentWindow.titlebarAppearsTransparent = true
     }
 
     /// AppKit's automatic tab placement runs when NSDocument shows its
@@ -290,10 +372,23 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
 
     func windowWillEnterFullScreen(_ notification: Notification) {
         applyAlwaysOnTopLevel(isFullScreen: true)
+        // Note: dropping .fullSizeContentView here would also avoid the
+        // known macOS 26 white-gap bug (FB20291636) with public API, but
+        // it makes the reveal bar push the content down. Safari's
+        // float-over behavior needs the flag, so the gap is neutralized by
+        // the layer treatments in the patrol instead.
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        // Full screen switches to the standard chrome (see
+        // applyWindowBackgroundTheme).
+        applyWindowBackgroundTheme()
     }
 
     func windowDidExitFullScreen(_ notification: Notification) {
         applyAlwaysOnTopLevel(isFullScreen: false)
+        // Back to the themed chrome.
+        applyWindowBackgroundTheme()
     }
 
     func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
@@ -1256,7 +1351,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         stack.edgeInsets = NSEdgeInsets(top: 4, left: 12, bottom: 6, right: 12)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let container = NSView()
+        // Translucent like the main toolbar: nothing can render behind the
+        // bar (the editor scroller clips text at its hairline and the pocket
+        // ends at the toolbar), so the bar needs no opaque backing — the
+        // flat theme color shows through. Without a theme the .hard edge
+        // still paints the classic opaque bar.
+        let container = EditAccessoryContainerView()
         container.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -1264,15 +1364,30 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
             stack.topAnchor.constraint(equalTo: container.topAnchor),
             stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
+        let hairline = NSBox()
+        hairline.boxType = .separator
+        hairline.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(hairline)
+        NSLayoutConstraint.activate([
+            hairline.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            hairline.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            hairline.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        hairline.isHidden = !activeSchemeThemed
+        editAccessoryHairline = hairline
 
         let accessory = NSTitlebarAccessoryViewController()
         accessory.view = container
         accessory.layoutAttribute = .bottom
         accessory.fullScreenMinHeight = 34
         // macOS 26 replaced the titlebar separator with scroll edge
-        // effects; hard = the classic line under the bar.
+        // effects; hard = the classic line under the bar. With a themed
+        // window background the hard edge would paint an opaque system
+        // strip over the theme color, so the frosted automatic style is
+        // used instead.
         if #available(macOS 26.1, *) {
-            accessory.preferredScrollEdgeEffectStyle = .hard
+            accessory.preferredScrollEdgeEffectStyle =
+                activeSchemeThemed ? .automatic : .hard
         }
         documentWindow.addTitlebarAccessoryViewController(accessory)
         editAccessory = accessory
@@ -2692,6 +2807,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
     private func setFindBarVisible(_ visible: Bool) {
         guard let accessory = findBarAccessory, accessory.isHidden == visible else { return }
         accessory.isHidden = !visible
+        if #available(macOS 26.1, *) {
+            // Visible bar always gets the hard backdrop; hidden, the
+            // preference must not leak a backdrop over a themed titlebar.
+            accessory.preferredScrollEdgeEffectStyle =
+                visible || !activeSchemeThemed ? .hard : .automatic
+        }
     }
 
     private func installFindBar() {
@@ -2704,11 +2825,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         bar.onDone = { [weak self] in self?.dismissFindBar() }
         bar.onModeChanged = { [weak self] mode in self?.searchModeDidChange(mode) }
         self.findBar = bar
-        self.findBarAccessory = addBottomTitlebarAccessory(bar) { accessory in
-            if #available(macOS 26.1, *) {
-                accessory.preferredScrollEdgeEffectStyle = .hard
-            }
-        }
+        // No .hard here: a hidden accessory's scroll-edge preference still
+        // applies, painting an opaque backdrop over a themed window background.
+        // setFindBarVisible flips it while the bar is actually shown.
+        self.findBarAccessory = addBottomTitlebarAccessory(bar)
     }
 
     private func dismissFindBar() {
@@ -2931,10 +3051,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
     }
 
-    /// Backs the "+" button in the native tab bar and File > New Tab.
-    /// There is no untitled-document concept here, so prompt for a file
-    /// and open it as a tab — an explicit tab request, unlike ⌘O.
-    override func newWindowForTab(_ sender: Any?) {
+    /// Backs File > New Tab. Deliberately NOT the NSResponder
+    /// `newWindowForTab(_:)` override: responding to that selector is what
+    /// makes AppKit show the "+" button in the tab bar, and the app hides
+    /// that button. There is no untitled-document concept here, so prompt
+    /// for a file and open it as a tab — an explicit tab request, unlike ⌘O.
+    @objc func newDocumentTab(_ sender: Any?) {
         promptForDocument(openAsTab: true)
     }
 
@@ -3093,6 +3215,44 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
                      fileName: fileURL.lastPathComponent,
                      url: fileURL,
                      assetBaseURL: fileURL.deletingLastPathComponent())
+    }
+
+    /// The formatting bar floats over the editor web view, whose cursor
+    /// tracking (I-beam over text, hand over links) otherwise fights the
+    /// bar's buttons. The bar region always shows the plain arrow.
+    private final class EditAccessoryContainerView: NSView {
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: .arrow)
+        }
+
+        // First install: the cursor rect is computed while the accessory
+        // has no frame yet and nothing re-invalidates it, so the web view's
+        // cursor wins between the buttons until the bar is reinstalled.
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.invalidateCursorRects(for: self)
+        }
+
+        override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            window?.invalidateCursorRects(for: self)
+        }
+
+        override func cursorUpdate(with event: NSEvent) {
+            NSCursor.arrow.set()
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            for area in trackingAreas where area.owner === self {
+                removeTrackingArea(area)
+            }
+            addTrackingArea(NSTrackingArea(
+                rect: bounds,
+                options: [.cursorUpdate, .activeInKeyWindow, .inVisibleRect],
+                owner: self
+            ))
+        }
     }
 
     private func addBottomTitlebarAccessory(
