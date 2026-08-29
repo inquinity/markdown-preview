@@ -45,6 +45,9 @@ final class MarkdownDocument: NSDocument {
             controller.openFolder(folderURL)
             return
         }
+        if fileURL == nil {
+            controller.prepareSidebarForUntitledDocument()
+        }
         controller.display(markdown: markdown, fileURL: fileURL)
     }
 
@@ -86,6 +89,11 @@ final class MarkdownDocument: NSDocument {
     func replaceContents(markdown: String, fileURL: URL) {
         markdownStorage.withLock { $0 = markdown }
         replaceFileURL(fileURL)
+    }
+
+    func replaceContents(markdown: String) {
+        markdownStorage.withLock { $0 = markdown }
+        updateChangeCount(.changeCleared)
     }
 
     func replaceFileURL(_ fileURL: URL) {

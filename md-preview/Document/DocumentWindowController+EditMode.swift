@@ -19,7 +19,7 @@ extension DocumentWindowController {
     }
 
     var canToggleEditMode: Bool {
-        isEditing || (currentFileURL != nil && currentMarkdown != nil)
+        isEditing || currentMarkdown != nil
     }
 
     var canFormatMarkdown: Bool { isEditing }
@@ -76,7 +76,7 @@ extension DocumentWindowController {
             ? NSLocalizedString("Stop editing and return to preview", comment: "Edit toolbar item tooltip while editing")
             : NSLocalizedString("Edit document", comment: "Edit toolbar item tooltip")
         item.subitems.first?.toolTip = item.toolTip
-        item.isEnabled = editing || (currentFileURL != nil && currentMarkdown != nil)
+        item.isEnabled = editing || currentMarkdown != nil
     }
 
     @objc private func toggleEditAction(_ sender: Any?) {

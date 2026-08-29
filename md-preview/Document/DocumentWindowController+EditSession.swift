@@ -6,11 +6,11 @@
 //
 
 import Cocoa
+import UniformTypeIdentifiers
 
 extension DocumentWindowController {
-    func enterEditMode() {
+    func enterEditMode(autofocus: Bool = false) {
         guard let split = mainSplit, !split.isEditingDocument,
-              currentFileURL != nil,
               let markdown = editorDraftMarkdown ?? currentMarkdown else {
             NSSound.beep()
             return
@@ -20,7 +20,8 @@ extension DocumentWindowController {
         // read-only renderer; the editor must expose and preserve it.
         let editor = split.enterEditMode(
             markdown: markdown,
-            assetBaseURL: currentFileURL?.deletingLastPathComponent()
+            assetBaseURL: currentFileURL?.deletingLastPathComponent(),
+            autofocus: autofocus
         )
         editor.cancelRequested = { [weak self] in
             self?.previewPendingEdits()
@@ -52,7 +53,7 @@ extension DocumentWindowController {
     func previewPendingEdits() {
         guard let split = mainSplit, let editor = split.editorViewController else { return }
         editor.fetchMarkdown { [weak self] markdown in
-            guard let self, let markdown, let url = self.currentFileURL else {
+            guard let self, let markdown else {
                 NSSound.beep()
                 return
             }
@@ -63,7 +64,11 @@ extension DocumentWindowController {
                 self.editorDraftMarkdown = nil
                 self.editorBaselineMarkdown = nil
             }
-            self.markdownDocument?.replaceContents(markdown: markdown, fileURL: url)
+            if let url = self.currentFileURL {
+                self.markdownDocument?.replaceContents(markdown: markdown, fileURL: url)
+            } else {
+                self.markdownDocument?.replaceContents(markdown: markdown)
+            }
             // exitEditMode(rerender: true) renders the pending markdown once
             // the editor's scroll anchor has been captured; rendering here as
             // well raced the anchor hand-off and re-laid the preview out
@@ -74,6 +79,45 @@ extension DocumentWindowController {
             self.exitEditMode(rerender: true,
                               preserveUnsavedChanges: true,
                               hidesAccessoryAfterFade: true) {}
+        }
+    }
+
+    private func saveUntitledMarkdown(
+        _ text: String,
+        completion: @escaping (EditedMarkdownSaveResult) -> Void
+    ) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        panel.allowsOtherFileTypes = false
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "Untitled.md"
+        panel.message = NSLocalizedString(
+            "Choose a name and location for the new Markdown file.",
+            comment: "New Markdown file panel prompt"
+        )
+        panel.prompt = NSLocalizedString("Save", comment: "Untitled Markdown file save panel button")
+        panel.beginSheetModal(for: documentWindow) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else {
+                completion(.cancelled)
+                return
+            }
+            guard self.write(text, to: url) else {
+                completion(.cancelled)
+                return
+            }
+
+            self.currentFileURL = url
+            self.documentWindow.title = url.lastPathComponent
+            self.markdownDocument?.replaceContents(markdown: text, fileURL: url)
+            self.mainSplit?.openFileURLDidChange(url, markdown: text)
+            self.resetAutoSaveFeedback()
+            self.refreshOpenWithItem()
+            self.refreshOpenInLLMItem()
+            self.refreshOpenActionsItem()
+            self.updateEditToolbarItem()
+            self.startWatching(url)
+            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+            completion(.saved)
         }
     }
 
@@ -229,6 +273,17 @@ extension DocumentWindowController {
                                             revision: Int? = nil,
                                             exitAfter: Bool) {
         isEditorCommitInFlight = true
+        if currentFileURL == nil {
+            saveUntitledMarkdown(body) { result in
+                self.handleEditedMarkdownSaveResult(result,
+                                                    body: body,
+                                                    editor: editor,
+                                                    revision: revision,
+                                                    exitAfter: exitAfter)
+            }
+            return
+        }
+
         let baseline = editorBaselineMarkdown ?? currentMarkdown
         let diskState = diskFileState(for: currentFileURL,
                                       expectedMarkdown: baseline)
@@ -399,8 +454,8 @@ extension DocumentWindowController {
             if self.editAccessory == nil {
                 self.updateEditToolbarItem()
             }
-            if rerender, let url = self.currentFileURL, let markdown = self.currentMarkdown {
-                self.renderCurrentDocument(text: markdown, fileURL: url)
+            if rerender, let markdown = self.currentMarkdown {
+                self.renderCurrentDocument(text: markdown, fileURL: self.currentFileURL)
             }
             completion()
         }

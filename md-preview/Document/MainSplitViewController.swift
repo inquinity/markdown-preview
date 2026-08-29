@@ -182,6 +182,11 @@ final class MainSplitViewController: NSSplitViewController {
         sidebar.animator().isCollapsed = false
     }
 
+    func hideSidebar() {
+        guard let sidebar = splitViewItems.first, !sidebar.isCollapsed else { return }
+        sidebar.isCollapsed = true
+    }
+
     var sidebarMode: SidebarViewController.Mode {
         sidebarViewController?.currentMode ?? .outline
     }
@@ -247,6 +252,7 @@ final class MainSplitViewController: NSSplitViewController {
     private var isSourceScrollAnchorResolved = false
     private var isEditorDOMReady = false
     private var pendingPreviewScrollProgress: CGFloat = 0
+    private var shouldAutofocusEditor = false
 
     var isEditingDocument: Bool {
         isEditorPreparing || isEditorVisible
@@ -258,9 +264,13 @@ final class MainSplitViewController: NSSplitViewController {
 
     @discardableResult
     func enterEditMode(markdown: String,
-                       assetBaseURL: URL? = nil) -> EditorViewController {
+                       assetBaseURL: URL? = nil,
+                       autofocus: Bool = false) -> EditorViewController {
         if let editor = editorViewController {
             editor.load(markdown: markdown, assetBaseURL: assetBaseURL)
+            if autofocus {
+                editor.focusEditor()
+            }
             return editor
         }
         guard let contentHost = layeredContentViewController else {
@@ -288,6 +298,7 @@ final class MainSplitViewController: NSSplitViewController {
         isSourceScrollAnchorResolved = false
         isEditorDOMReady = false
         pendingPreviewScrollProgress = previewScrollProgress
+        shouldAutofocusEditor = autofocus
         // A rapid re-entry can interrupt a previous exit whose anchor
         // restore is still pending; drop that machinery so it can't fire
         // into the new editing session.
@@ -333,15 +344,19 @@ final class MainSplitViewController: NSSplitViewController {
                     context.duration = 0.10
                     context.timingFunction = CAMediaTimingFunction(name: .easeOut)
                     editorVC.view.animator().alphaValue = 1
-                } completionHandler: { [weak self] in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.isEditorPreparing else { return }
+                } completionHandler: { [weak self, weak editorVC] in
+                    Task { @MainActor [weak self, weak editorVC] in
+                        guard let self, let editorVC, self.isEditorPreparing else { return }
                         self.isEditorPreparing = false
                         self.isEditorVisible = true
                         // Hide the preview WebView so it no longer contributes to
                         // titlebar material sampling. The editor overlay is now
                         // fully opaque and covering it.
                         self.contentViewController?.view.isHidden = true
+                        if self.shouldAutofocusEditor {
+                            self.shouldAutofocusEditor = false
+                            editorVC.focusEditor()
+                        }
                     }
                 }
             }
@@ -372,6 +387,7 @@ final class MainSplitViewController: NSSplitViewController {
             self.isEditorDOMReady = false
             self.isEditorPreparing = false
             self.isEditorVisible = false
+            self.shouldAutofocusEditor = false
 
             let fadeOutEditor = { [weak self, weak editorVC] in
                 guard let self, let editorVC,
