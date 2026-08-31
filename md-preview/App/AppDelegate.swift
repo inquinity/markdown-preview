@@ -83,6 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
 
     private var settingsWindowController: SettingsWindowController?
+    /// Non-zero while `withCoalescedPreviewReloads` is holding reloads back.
+    private var coalescedReloadDepth = 0
+    private var needsCoalescedPreviewReload = false
 
     private weak var hideSidebarMenuItem: NSMenuItem?
     private weak var outlineMenuItem: NSMenuItem?
@@ -306,6 +309,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.show()
     }
 
+    /// Opens Settings directly on a pane.
+    func showSettingsWindow(pane: SettingsPane) {
+        SettingsModel.shared.refreshFromExternalSources()
+        SettingsModel.shared.reloadOpenTargets()
+        let controller = settingsWindowController ?? SettingsWindowController()
+        settingsWindowController = controller
+        controller.show(pane: pane)
+    }
+
     /// Applies an appearance chosen in Settings, keeping the View menu's check
     /// marks and every open preview in step.
     func applyAppearanceSetting(_ mode: AppearanceMode) {
@@ -328,6 +340,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard setting != DocumentFontSetting.current else { return }
         DocumentFontSetting.current = setting
         reloadDocumentPreviewsForSettingChange()
+    }
+
+    /// Applies reading layout chosen in Customize Theme (bold text and the
+    /// spacing sliders). The values are CSS custom properties, so open pages
+    /// are restyled in place rather than re-rendered — cheap enough to run on
+    /// every slider tick, which is what makes the document itself the
+    /// preview. Quick Look reads the stored value on its next preview.
+    func applyReaderLayoutSetting(_ setting: ReaderLayoutSetting) {
+        guard setting != ReaderLayoutSetting.current else { return }
+        ReaderLayoutSetting.current = setting
+        documentWindowControllers.forEach { $0.applyReaderLayoutSetting() }
     }
 
     /// Pushes a text size chosen in Settings into every open document. The
@@ -1028,10 +1051,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func reloadDocumentPreviewsForSettingChange() {
+        guard coalescedReloadDepth == 0 else {
+            needsCoalescedPreviewReload = true
+            return
+        }
         NSDocumentController.shared.documents
             .flatMap(\.windowControllers)
             .compactMap { $0 as? DocumentWindowController }
             .forEach { $0.reloadPreviewForSettingChange() }
+    }
+
+    /// Runs `body` with preview reloads held back, then issues at most one.
+    /// Applying a theme preset changes colors, appearance, the reading face
+    /// and the body weight, and each of those would otherwise re-render
+    /// every open document on its own.
+    func withCoalescedPreviewReloads(_ body: () -> Void) {
+        coalescedReloadDepth += 1
+        body()
+        coalescedReloadDepth -= 1
+        guard coalescedReloadDepth == 0, needsCoalescedPreviewReload else { return }
+        needsCoalescedPreviewReload = false
+        reloadDocumentPreviewsForSettingChange()
     }
 
     private func installAppMenuItemIcons() {

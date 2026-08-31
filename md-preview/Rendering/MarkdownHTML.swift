@@ -67,6 +67,10 @@ nonisolated enum MarkdownHTML {
     /// render time and rewritten in place by the host when the user edits a
     /// color, so a live page restyles without a reload.
     static let themeStyleElementID = "mdp-theme-overrides"
+    /// Reader layout lives in its own element, rewritten in place when the
+    /// Customize Theme sliders move — the same trick the theme colors use, so
+    /// a drag restyles the loaded page instead of re-rendering it.
+    static let readerLayoutStyleElementID = "mdp-reader-layout"
 
     /// User color overrides injected after the stylesheet. Values are
     /// sanitized hex colors — anything else is dropped, never emitted —
@@ -251,13 +255,15 @@ nonisolated enum MarkdownHTML {
                          assetBaseHref: String? = nil,
                          vendorLoading: VendorLoading = .inline,
                          colorScheme: ColorScheme? = nil,
-                         documentFont: DocumentFontSetting = .current) -> String {
+                         documentFont: DocumentFontSetting = .current,
+                         readerLayout: ReaderLayoutSetting = .current) -> String {
         render(markdown: markdown,
                allowsScroll: allowsScroll,
                assetBaseHref: assetBaseHref,
                vendorLoading: vendorLoading,
                colorScheme: colorScheme,
-               documentFont: documentFont).html
+               documentFont: documentFont,
+               readerLayout: readerLayout).html
     }
 
     static func render(markdown: String,
@@ -268,6 +274,7 @@ nonisolated enum MarkdownHTML {
                        colorScheme: ColorScheme? = nil,
                        themeOverrides: ThemeOverrides? = nil,
                        documentFont: DocumentFontSetting = .current,
+                       readerLayout: ReaderLayoutSetting = .current,
                        warmup: Bool = false) -> RenderedHTML {
         let frontmatter = MarkdownFrontmatter.split(markdown)
         let body = frontmatter.body
@@ -349,6 +356,12 @@ nonisolated enum MarkdownHTML {
         }
         </style>
         """
+        // Always emitted, possibly empty, and last of the style blocks: a
+        // live rewrite has a stable element to target and wins the cascade
+        // against the blocks above it.
+        let readerLayoutBlock = """
+        <style id="\(readerLayoutStyleElementID)">\(readerLayout.pageCSS)</style>
+        """
 
         // The href may carry a real folder path (percent-encoded, but `&`
         // and `'` survive URL path encoding) — escape it for the attribute.
@@ -411,6 +424,7 @@ nonisolated enum MarkdownHTML {
         \(scrollOverride)
         \(contentWidthOverride)
         \(documentFontOverride)
+        \(readerLayoutBlock)
         \(sanitizerBlock)
         \(morphBlock)
         \(hostBridgeScript)

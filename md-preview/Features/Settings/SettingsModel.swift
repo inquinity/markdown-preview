@@ -37,6 +37,13 @@ final class SettingsModel {
         }
     }
 
+    var readerLayout: ReaderLayoutSetting {
+        didSet {
+            guard !isRestoringExternalValues, readerLayout != oldValue else { return }
+            appDelegate?.applyReaderLayoutSetting(readerLayout)
+        }
+    }
+
     var contentWidth: ContentWidthSetting {
         didSet {
             guard !isRestoringExternalValues, contentWidth != oldValue else { return }
@@ -119,17 +126,74 @@ final class SettingsModel {
         applyPreset(.defaultPreset)
     }
 
+    /// The theme the reader last applied from a gallery. Remembered so Reset
+    /// puts *that* theme back — hand-edited colors, a swapped face or moved
+    /// sliders undo to the theme they were built on, rather than dropping the
+    /// reader onto the default one.
+    private static let appliedPresetKey = "MarkdownPreview.theme.appliedPreset"
+
+    var appliedPreset: ThemePreset {
+        if let name = UserDefaults.standard.string(forKey: Self.appliedPresetKey),
+           let stored = ThemePreset.builtIn.first(where: { $0.name == name }) {
+            return stored
+        }
+        // No name recorded — the reader upgraded from a build that never
+        // wrote one. Fall back to whichever preset their stored colors
+        // match, so Reset returns them to the theme they are actually
+        // reading in rather than to the default one.
+        return selectedPreset ?? .defaultPreset
+    }
+
+    /// Applies a whole reading look at once — what the Customize Theme sheet
+    /// hands over when the reader saves. Coalesced, so the open documents
+    /// update once rather than once per dimension.
+    func applyReadingLook(themeColors newColors: ThemeColorsSetting,
+                          documentFont newFont: DocumentFontSetting,
+                          readerLayout newLayout: ReaderLayoutSetting) {
+        let apply = {
+            self.themeColors = newColors
+            self.documentFont = newFont
+            self.readerLayout = newLayout
+        }
+        guard let appDelegate else { return apply() }
+        appDelegate.withCoalescedPreviewReloads(apply)
+    }
+
+    /// The preset the stored colors correspond to. Colors that were never
+    /// customized count as the default preset — the app treats "no
+    /// overrides" as the default theme, so preset galleries always mark an
+    /// active card. Hand-edited colors that match no preset return nil
+    /// ("Custom colors").
+    var selectedPreset: ThemePreset? {
+        if let match = ThemePreset.builtIn.first(where: { themeColors == $0.setting }) {
+            return match
+        }
+        return themeColors.isCustomized ? nil : .defaultPreset
+    }
+
     /// Applies a preset: writes its palette into every slot for both
     /// schemes and switches the app appearance to the preset's flavor so
     /// the native chrome matches. A `.system` preset keeps the Automatic
     /// appearance instead — its palettes carry both schemes.
     func applyPreset(_ preset: ThemePreset) {
+        guard let appDelegate else { return applyPresetValues(preset) }
+        // One re-render for the whole look rather than one per dimension.
+        appDelegate.withCoalescedPreviewReloads { applyPresetValues(preset) }
+    }
+
+    private func applyPresetValues(_ preset: ThemePreset) {
+        UserDefaults.standard.set(preset.name, forKey: Self.appliedPresetKey)
         themeColors = preset.setting
         switch preset.flavor {
         case .light: appearance = .light
         case .dark: appearance = .dark
         case .system: appearance = .automatic
         }
+        // A preset is a whole reading look, so it carries the face and the
+        // body weight with it. The spacing sliders are the reader's own and
+        // survive a preset change.
+        documentFont = preset.font
+        readerLayout.boldText = preset.boldText
     }
 
     var checksForUpdatesAutomatically: Bool {
@@ -183,6 +247,7 @@ final class SettingsModel {
         autoSaveIntervalMinutes = AutoSaveSetting.currentMinutes
         textSize = TextSizeSetting.current
         documentFont = DocumentFontSetting.current
+        readerLayout = ReaderLayoutSetting.current
         isAlwaysOnTop = AlwaysOnTopPolicy.isEnabled
         opensDocumentsInTabs = TabOpeningPolicy.isEnabled
         sendsCrashReports = CrashReporter.isEnabled
@@ -236,6 +301,7 @@ final class SettingsModel {
         autoSaveIntervalMinutes = AutoSaveSetting.currentMinutes
         textSize = TextSizeSetting.current
         documentFont = DocumentFontSetting.current
+        readerLayout = ReaderLayoutSetting.current
         isAlwaysOnTop = AlwaysOnTopPolicy.isEnabled
         opensDocumentsInTabs = TabOpeningPolicy.isEnabled
         sendsCrashReports = CrashReporter.isEnabled

@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 // reachable from AppKit through an @objc entry point, and `NSWindowController` has
 // no such method to override, so without this conformance the implementation below
 // is never called: no menu item ever gets its state, and the failure is silent.
-final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSSharingServicePickerToolbarItemDelegate, NSSearchFieldDelegate, NSMenuDelegate, NSMenuItemValidation {
+final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSSharingServicePickerToolbarItemDelegate, NSSearchFieldDelegate, NSMenuDelegate, NSMenuItemValidation, NSPopoverDelegate {
 
     enum NavigationIntent {
         case normal
@@ -106,6 +106,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
     weak var editBar: NSView?
     weak var copyItem: NSToolbarItem?
     var copyFeedbackWork: DispatchWorkItem?
+    /// The Themes & Settings popover while it is on screen.
+    var themesPopover: NSPopover?
+    /// Armed only while the themes popover is open.
+    let themesPopoverEscapeMonitor = EscapeKeyMonitor()
     weak var searchField: NSSearchField?
     weak var sidebarMenu: NSMenu?
     var findBar: FindBar?
@@ -208,6 +212,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         toolbar.autosavesConfiguration = true
         documentWindow.toolbar = toolbar
         documentWindow.toolbarStyle = .automatic
+        replaceZoomToolbarItemIfNeeded(in: toolbar)
 
         installFindBar()
         applyWindowBackgroundTheme()
@@ -334,6 +339,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
     func windowWillClose(_ notification: Notification) {
         fileWatcher?.cancel()
         fileWatcher = nil
+        themesPopoverEscapeMonitor.stop()
         stopAutoSaveTimer()
         autoSaveFeedbackResetWork?.cancel()
         autoSaveFeedbackResetWork = nil
