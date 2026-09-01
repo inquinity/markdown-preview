@@ -1,5 +1,23 @@
 # Markdown Preview — agent guide
 
+> ## ⚠️ FORK STATUS — read before acting on anything below
+>
+> This is **[inquinity/markdown-preview](https://github.com/inquinity/markdown-preview)**,
+> a fork of pluk-inc/markdown-preview. Read
+> **[docs/FORK-NOTES.md](docs/FORK-NOTES.md)** first — it is the source of truth for how
+> this repository differs from the document below.
+>
+> - **Do not run `scripts/release.sh` or `scripts/rollback-release.sh`.** They drive the
+>   Amore CLI against upstream's account and signing identity, neither of which we have.
+>   The release pipeline is being replaced in milestone M2.
+> - The **Project facts** table below still describes upstream. The bundle identifiers,
+>   team ID and product name change in M2.
+> - The fork carries **deliberately dead code** — an orphaned CLI installer and stubbed
+>   telemetry reporters. This is load-bearing for cheap upstream merges. Do not remove it.
+> - Sync with `git merge upstream/main`. **Never rebase `main`** — it is published.
+>
+> Everything after this block is upstream's documentation, preserved as-is.
+
 A macOS app for previewing Markdown files. AppKit, sandboxed, ships with a Quick Look extension. Updates via Sparkle, distributed via Amore.
 
 ## Project facts
