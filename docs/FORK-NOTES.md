@@ -170,7 +170,7 @@ Those are product decisions, not defects, and filing them would be noise.
 | **F2** | Hardening | CSP on the app preview page and editor (`PreviewContentPolicy`) | ✅ done — **needs UI verification** |
 | **F3** | *Future* | Security-scoped bookmarks; drop the `/` read-only entitlement | — |
 | **F4** | *Future* | Click-to-load control for remote images in the app window, the way mail clients defer them | — |
-| **M2b** | Rebranding | Replace the app icon — needs artwork before the mechanical part can happen | pending |
+| **M2b** | Rebranding | Replace the app icon | ✅ done — placeholder, regenerate with `scripts/make-icon.swift` |
 | **B1** | *Bug* | Mermaid diagrams do not render in Quick Look | ✅ **not ours** — reproduces on a stock upstream install; moved to the contribution track |
 
 ### Deferred, with reasons
@@ -198,19 +198,27 @@ this needs verification by eye against math, diagrams, highlighted code, local i
 the copy button, in both the reader and the editor. Unit tests pin the policy string; they
 cannot tell you the page still looks right.
 
-**M2b — the app icon.** The fork still ships upstream's icon, so two identically named
-and identically iconed apps sit in the Dock. Upstream also has an open issue that their
-icon is too close to macOS Preview's, so there is a reason to change beyond
-differentiation.
+**M2b — the app icon. Done, with a placeholder.** The fork shipped upstream's icon, so two
+identically named and identically iconed apps sat in the Dock — and upstream has an open
+issue that their icon is too close to macOS Preview's.
 
-The mechanics are small: `md-preview/AppIcon.icon` is an Icon Composer document — an
-`icon.json` manifest plus a single PNG layer in `Assets/`. Replacing the artwork means
-swapping that PNG and updating the `image-name` and `name` fields, or rebuilding the
-document in Icon Composer (ships with Xcode 26). `ASSETCATALOG_COMPILER_APPICON_NAME` is
-already `AppIcon` and needs no change. `docs/app-icon.png` and the README screenshots are
-upstream marketing assets and can be left alone.
+`md-preview/AppIcon.icon` is an Icon Composer document: an `icon.json` manifest plus one
+PNG layer in `Assets/`. The layer is now `AppIconLayer.png`, drawn on transparency so
+Icon Composer still supplies the background gradient and glass treatment. `scale` moved
+from `0.82` to `1.0`: upstream's layer was a full-bleed image needing inset, this one
+carries its own.
 
-Blocked on artwork, which is a design decision rather than a mechanical one.
+**It is a placeholder, not a design.** Amber, chosen to sit far from macOS Preview's
+blue-grey, with the Markdown down-arrow, and legible at 16px in a Finder list.
+`scripts/make-icon.swift` regenerates it, so colour and mark are cheap to change —
+replace the PNG and rebuild. Real artwork can drop in the same way.
+
+`docs/app-icon.png` and the README screenshots are upstream marketing assets and are left
+alone.
+
+Still open: the Release build is called plainly **Markdown Preview**, the same as
+upstream. A colleague with the Homebrew cask installed would have two identically named
+apps with different icons.
 
 **F4 — click-to-load remote images in the app window.** Quick Look blocks remote images
 outright (M3b), and that is the right default for a surface reached by pressing space on
