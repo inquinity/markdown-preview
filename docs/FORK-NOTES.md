@@ -255,9 +255,15 @@ Also ruled out: Mermaid is present in the appex, and uses no `eval`, `Function`,
 blob URLs or dynamic `import()`. Quick Look renders with `vendorLoading: .inline`, so the
 bundle is inlined rather than fetched over a scheme that could fail.
 
-The remaining hypothesis for whoever picks this up: Mermaid is a 3 MB bundle that renders
-asynchronously, and Quick Look may snapshot or tear down the preview before it finishes.
-That would fit the symptom — the figure container is emitted, the SVG never replaces it.
+**Confirmed asymmetric on upstream: diagrams render in their app window and fail in their
+Quick Look.** That isolates it to the Quick Look path rather than to Mermaid or the
+renderer.
+
+The leading hypothesis: Mermaid is a 3 MB bundle that renders asynchronously. The app
+window has as long as it needs; a Quick Look preview may be snapshotted, or the extension
+torn down, before the render completes. That fits the symptom — the figure container is
+emitted, the SVG never replaces it — and is consistent with KaTeX and highlight.js
+working in Quick Look, both being far smaller and finishing sooner.
 
 **F3 — the `/` read-only entitlement.** Both targets carry
 `com.apple.security.temporary-exception.files.absolute-path.read-only` = `/`. There is no
