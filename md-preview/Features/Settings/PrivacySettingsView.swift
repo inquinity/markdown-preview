@@ -28,10 +28,10 @@ struct PrivacySettingsView: View {
 
             Section {
                 LabeledContent(L("Remote images")) {
-                    Text(L("Loaded")).foregroundStyle(.secondary)
+                    Text(L("Blocked")).foregroundStyle(.secondary)
                 }
             } footer: {
-                Text(L("A Markdown document that references an image by http or https URL will still load it when previewed, which tells that server the document was opened. Only the app itself is silent."))
+                Text(L("A Markdown document that references an image by http or https URL will show it as broken rather than fetching it, so opening or previewing a document never tells its author that you read it. This applies to the document window, the editor and Quick Look."))
             }
         }
         .formStyle(.grouped)

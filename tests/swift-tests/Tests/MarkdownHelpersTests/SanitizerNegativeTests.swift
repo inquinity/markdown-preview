@@ -88,17 +88,20 @@ final class SanitizerNegativeTests: XCTestCase {
 
     // MARK: - Remote content
 
-    /// Documents a KNOWN GAP rather than a guarantee.
+    /// Remote `<img>` elements survive sanitization: `ALLOWED_URI_REGEXP`
+    /// permits `http`/`https`, so DOMPurify keeps them in the DOM.
     ///
-    /// In the app window there is no CSP and `ALLOWED_URI_REGEXP` permits
-    /// `http`/`https`, so remote images in a document survive sanitization and
-    /// will be fetched — disclosing to their host that the file was opened.
-    /// Quick Look is not affected; `QuickLookContentPolicy` blocks it there.
+    /// That is no longer a disclosure risk, because nothing fetches them —
+    /// `PreviewContentPolicy` omits both schemes from `img-src`, so the load is
+    /// refused by the page. The element is present and broken rather than
+    /// absent, which is why this test still passes and still matters: it pins
+    /// the sanitizer's behaviour, so if the CSP were ever dropped the exposure
+    /// would return silently.
     ///
-    /// This asserts today's behaviour so that it fails the moment it changes.
-    /// When F2 (a CSP for the app page) or upstream's fix lands, invert it.
+    /// Tightening `ALLOWED_URI_REGEXP` to drop `http`/`https` is the belt to
+    /// this braces, and is on the upstream contribution track.
     @MainActor
-    func testRemoteImagesStillSurviveInTheAppWindow_knownGap() async throws {
+    func testRemoteImagesSurviveSanitizationAndAreStoppedByThePolicyInstead() async throws {
         let webView = try await loadHarness()
         try await render(fixture: "remote-beacon.md", in: webView)
 
@@ -108,7 +111,8 @@ final class SanitizerNegativeTests: XCTestCase {
             survivors.remoteImages, 0,
             """
             Remote images no longer survive sanitization. That is an improvement, \
-            not a failure — update this test and close F2 in docs/FORK-NOTES.md. \
+            not a failure — it means ALLOWED_URI_REGEXP was tightened, so this \
+            assertion should be inverted and the CSP left as defence in depth. \
             \(survivors.raw)
             """
         )

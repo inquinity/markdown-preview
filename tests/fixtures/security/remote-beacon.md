@@ -5,20 +5,24 @@ Every reference below is a tracking pixel. Rendering this document tells
 and the query strings show how an author can identify *which* document and
 recipient without any cooperation from the reader.
 
-Two different mitigations apply, and they are not the same strength:
+Both surfaces block these, and neither does it with the sandbox — both targets
+must keep `com.apple.security.network.client` or WKWebView renders nothing at
+all, so the block lives in the page:
 
-- **Quick Look** — blocked. The extension holds
-  `com.apple.security.network.client` (it renders blank without it), so the
-  sandbox cannot help; `QuickLookContentPolicy` denies remote origins in the
-  page instead. `QuickLookContentPolicyTests` guards that.
-- **The main app window** — *not* blocked. That page has no CSP, and
-  DOMPurify's `ALLOWED_URI_REGEXP` permits `http`/`https`. The app itself makes
-  no connections, but content it renders still can. Reported upstream and
-  tracked here as F2.
+- **Quick Look** — `QuickLookContentPolicy`. Guarded by
+  `QuickLookContentPolicyTests`.
+- **The app window and editor** — `PreviewContentPolicy`. Guarded by
+  `PreviewContentPolicyTests`.
 
-Do not "fix" the app-window gap by pointing `QuickLookContentPolicy` at that
-page: it serves scripts and images over the `md-asset:` scheme and the Quick
-Look policy would break it.
+The two policies are deliberately separate and must not be merged. Quick Look
+inlines its vendor bundles and carries images as `data:`/`cid:`; the app page
+fetches scripts and images over the `md-asset:` scheme. A single shared policy
+would have to permit the union of both, which is weaker than either.
+
+DOMPurify still keeps these `<img>` elements in the DOM — `ALLOWED_URI_REGEXP`
+permits `http`/`https` — so they appear as broken images rather than vanishing.
+The load is what is refused. Tightening that regexp is the belt to this braces
+and is on the upstream contribution track.
 
 ## Image beacons
 
