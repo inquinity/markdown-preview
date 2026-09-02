@@ -179,7 +179,8 @@ Unscheduled — not part of the milestone sequence above, and not blocking M5. `
 | **F3** | Security-scoped bookmarks; drop the `/` read-only entitlement | |
 | **F4** | Click-to-load control for remote images in the app window, the way mail clients defer them | |
 | **F5** | Manual-test `.md` files need pass/fail criteria a human can read off the screen | See below |
-| **F6** | Multiple tabs, and separating a tab back out into its own window | Basic tab support already exists (`TabOpeningPolicy`, Settings → General → "Open documents in tabs", off by default) and standard AppKit tab tear-out should follow from it, but this has not been confirmed against what's actually wanted here — treat as unconfirmed, not done. |
+| **F7** | `MainMenu.strings` still says "Markdown Preview" — the actual Application menu (Quit, About, Hide, Help) | Not covered by the M2b rename, which only touched `Localizable.strings`. 6 literal instances in `en.lproj/MainMenu.strings`, more in `zh-Hans`. Also carries two now-orphaned menu items worth a look while in there: "Check for Updates…" (dead since M3 excised Sparkle — the item removes itself from the menu at runtime in `AppDelegate`, so this may be inert rather than visible, worth confirming) and "Send Anonymous Crash Reports" (toggles a stub that can never actually turn on). |
+| **F8** | Pick a final product name and icon | Both current ones are explicitly provisional: `MDView` was a quick pick to stop the Dock collision with upstream, and the icon (`scripts/make-icon.swift`) was called a placeholder when it shipped. Whatever gets decided needs to land in `Localizable.strings` *and* `MainMenu.strings` (see F7) *and* `AppIcon.icon`, not just one of them. |
 
 ### Deferred, with reasons
 
