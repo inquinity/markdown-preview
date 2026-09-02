@@ -13,7 +13,6 @@
 //  the existing types keeps one source of truth.
 //
 
-import Sparkle
 import SwiftUI
 
 // MARK: - Model
@@ -196,24 +195,6 @@ final class SettingsModel {
         readerLayout.boldText = preset.boldText
     }
 
-    var checksForUpdatesAutomatically: Bool {
-        didSet {
-            guard !isRestoringExternalValues,
-                  checksForUpdatesAutomatically != oldValue else { return }
-            updater?.automaticallyChecksForUpdates = checksForUpdatesAutomatically
-        }
-    }
-
-    var downloadsUpdatesAutomatically: Bool {
-        didSet {
-            guard !isRestoringExternalValues,
-                  downloadsUpdatesAutomatically != oldValue else { return }
-            updater?.automaticallyDownloadsUpdates = downloadsUpdatesAutomatically
-        }
-    }
-
-    private(set) var lastUpdateCheckDate: Date?
-
     /// Selected entry in the "Open documents in" picker, as an `OpenTargetChoice.id`.
     var openTargetID: String {
         didSet {
@@ -236,12 +217,8 @@ final class SettingsModel {
     /// differently once a kind is persisted.
     private var isRestoringOpenTarget = false
     private var isRestoringExternalValues = false
-    private var updateObservations: [NSKeyValueObservation] = []
-
-    private var updater: SPUUpdater? { appDelegate?.updaterController.updater }
 
     private init() {
-        let updater = (NSApp.delegate as? AppDelegate)?.updaterController.updater
         appearance = AppearanceMode.current
         contentWidth = ContentWidthSetting.current
         autoSaveIntervalMinutes = AutoSaveSetting.currentMinutes
@@ -253,45 +230,12 @@ final class SettingsModel {
         sendsCrashReports = CrashReporter.isEnabled
         themeColors = ThemeColorsSetting.current
         sharesAnonymousUsageAnalytics = UsageAnalyticsReporter.isEnabled
-        checksForUpdatesAutomatically = updater?.automaticallyChecksForUpdates ?? true
-        downloadsUpdatesAutomatically = updater?.automaticallyDownloadsUpdates ?? false
-        lastUpdateCheckDate = updater?.lastUpdateCheckDate
         openTargetID = ""
         reloadOpenTargets()
-
-        if let updater {
-            // Changing automatic checks can make Sparkle recalculate whether
-            // automatic downloads are effective. Observe all three values so
-            // the controls stay in sync with Sparkle's persisted settings.
-            updateObservations = [
-                updater.observe(\.automaticallyChecksForUpdates, options: [.new]) {
-                    [weak self] updater, _ in
-                    MainActor.assumeIsolated { self?.refreshUpdateSettings(from: updater) }
-                },
-                updater.observe(\.automaticallyDownloadsUpdates, options: [.new]) {
-                    [weak self] updater, _ in
-                    MainActor.assumeIsolated { self?.refreshUpdateSettings(from: updater) }
-                },
-                updater.observe(\.lastUpdateCheckDate, options: [.new]) {
-                    [weak self] updater, _ in
-                    MainActor.assumeIsolated { self?.refreshUpdateSettings(from: updater) }
-                }
-            ]
-        }
     }
 
-    private func refreshUpdateSettings(from updater: SPUUpdater) {
-        let wasRestoringExternalValues = isRestoringExternalValues
-        isRestoringExternalValues = true
-        checksForUpdatesAutomatically = updater.automaticallyChecksForUpdates
-        downloadsUpdatesAutomatically = updater.automaticallyDownloadsUpdates
-        lastUpdateCheckDate = updater.lastUpdateCheckDate
-        isRestoringExternalValues = wasRestoringExternalValues
-    }
-
-    /// Re-reads values that menus, document zoom, a window's own toolbar,
-    /// Sparkle, the crash reporter, or usage analytics can change while the
-    /// shared Settings model remains alive.
+    /// Re-reads values that menus, document zoom, or a window's own toolbar
+    /// can change while the shared Settings model remains alive.
     func refreshFromExternalSources() {
         isRestoringExternalValues = true
         defer { isRestoringExternalValues = false }
@@ -307,7 +251,6 @@ final class SettingsModel {
         sendsCrashReports = CrashReporter.isEnabled
         themeColors = ThemeColorsSetting.current
         sharesAnonymousUsageAnalytics = UsageAnalyticsReporter.isEnabled
-        if let updater { refreshUpdateSettings(from: updater) }
     }
 
     /// Re-reads installed apps and the persisted default. Called when the

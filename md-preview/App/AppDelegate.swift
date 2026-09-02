@@ -4,7 +4,6 @@
 //
 
 import Cocoa
-import Sparkle
 
 private enum CommandLineToolInstallError: LocalizedError {
     case terminalAutomationFailed(String?)
@@ -75,12 +74,6 @@ private extension AppearanceMode {
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @IBOutlet private weak var checkForUpdatesMenuItem: NSMenuItem?
-
-    let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
 
     private var settingsWindowController: SettingsWindowController?
     /// Non-zero while `withCoalescedPreviewReloads` is holding reloads back.
@@ -258,10 +251,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
-    }
-
-    @IBAction func checkForUpdates(_ sender: Any?) {
-        updaterController.updater.checkForUpdates()
     }
 
     @IBAction func toggleCrashReporting(_ sender: NSMenuItem) {
@@ -1074,32 +1063,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reloadDocumentPreviewsForSettingChange()
     }
 
+    /// The MainMenu nib still carries a "Check for Updates..." item. Upstream
+    /// wires it to Sparkle here and inserts an "Install CLI..." item beside it;
+    /// this fork ships neither, so the item is removed from the menu rather than
+    /// left connected to nothing. The CLI item went with it because its
+    /// insertion was anchored on the updates item's index.
     private func installAppMenuItemIcons() {
-        checkForUpdatesMenuItem?.target = updaterController
-        checkForUpdatesMenuItem?.action = #selector(SPUStandardUpdaterController.checkForUpdates(_:))
-
-        guard let updatesItem = checkForUpdatesMenuItem,
-              let appMenu = updatesItem.menu
-        else { return }
-
-        let cliItem = NSMenuItem(title: L("Install CLI..."),
-                                 action: #selector(installCommandLineTools(_:)),
-                                 keyEquivalent: "")
-        cliItem.target = self
-        appMenu.insertItem(.separator(), at: appMenu.index(of: updatesItem) + 1)
-        appMenu.insertItem(cliItem, at: appMenu.index(of: updatesItem) + 2)
-
-        let icons: [(NSMenuItem, String)] = [
-            (updatesItem, "arrow.triangle.2.circlepath"),
-            (cliItem, "terminal")
-        ]
-        for (item, symbol) in icons {
-            guard let image = NSImage(systemSymbolName: symbol,
-                                      accessibilityDescription: item.title)
-            else { continue }
-            image.isTemplate = true
-            item.image = image
-        }
+        guard let updatesItem = checkForUpdatesMenuItem else { return }
+        updatesItem.menu?.removeItem(updatesItem)
     }
 
     private func installSidebarViewMenuItems() {
