@@ -523,7 +523,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.altmansoftwaredesign.markdown-preview.dev";
-				PRODUCT_NAME = "Markdown Preview (Dev)";
+				PRODUCT_NAME = "MDView (Dev)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -561,7 +561,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.altmansoftwaredesign.markdown-preview";
-				PRODUCT_NAME = "Markdown Preview";
+				PRODUCT_NAME = "MDView";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

@@ -54,7 +54,7 @@ So the entitlement is back on both targets and cannot be removed. What holds:
 Verify empirically rather than by reading entitlements, which is what misled us:
 
 ```bash
-sudo lsof -i -a -p $(pgrep -f "Markdown Preview") -r 2
+sudo lsof -i -a -p $(pgrep -f "MDView") -r 2
 ```
 
 ## Branch model
@@ -216,9 +216,15 @@ replace the PNG and rebuild. Real artwork can drop in the same way.
 `docs/app-icon.png` and the README screenshots are upstream marketing assets and are left
 alone.
 
-Still open: the Release build is called plainly **Markdown Preview**, the same as
-upstream. A colleague with the Homebrew cask installed would have two identically named
-apps with different icons.
+The product is also renamed: **MDView**, so it no longer collides with an upstream
+install in the Dock, in Finder, or in the list of running apps. `PRODUCT_NAME` carries it
+(`MDView (Dev)` for Debug), and the display name in `Localizable.strings` follows — values
+only, since the keys are the identifiers `L()` looks up.
+
+**The bundle identifier deliberately still says `markdown-preview`**
+(`com.altmansoftwaredesign.markdown-preview`). Renaming it again would mean a new app
+group, discarded preferences and another LaunchServices re-registration, all for a string
+no user sees. The mismatch is intentional; do not "tidy" it.
 
 **F4 — click-to-load remote images in the app window.** Quick Look blocks remote images
 outright (M3b), and that is the right default for a surface reached by pressing space on
