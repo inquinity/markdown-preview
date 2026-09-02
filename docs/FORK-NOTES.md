@@ -166,7 +166,7 @@ Those are product decisions, not defects, and filing them would be noise.
 | **M3b** | *Conditional* | Quick Look CSP — the extension does need `network.client`, so the page blocks remote content instead | ✅ done |
 | **M4** | Containment | `md-asset:` confinement — **skipped entirely if upstream accepts the M1 advisory** | pending |
 | **M2b** | Rebranding | Replace the app icon | ✅ done — placeholder, regenerate with `scripts/make-icon.swift` |
-| **M5** | Distribution | Notarize (✅ `dist/MDView 1.0.0.dmg`, verified: stapled, spctl-accepted, correct identity/version), verify on a second Mac (pending), ship via corporate share or Dropbox (pending) | **in progress** |
+| **M5** | Distribution | Notarize (✅ `dist/MDView 1.0.0.dmg`), verify on a second Mac (✅ passed), ship via corporate share or Dropbox (pending — the user's own action, not tool-driven) | **in progress** — one step left |
 
 ## Backlog
 
