@@ -118,8 +118,8 @@ merged it stops being our diff to carry:
 
 | Finding | Form | Status |
 |---|---|---|
-| `md-asset:` scheme has no path containment (`MarkdownAssetResolution.swift:49`) | Private security advisory | pending |
-| Preview document has no Content-Security-Policy | Issue → PR | pending |
+| `md-asset:` scheme has no path containment (`MarkdownAssetResolution.swift:49`) | Private security advisory | **filed 2026-09-02** — [GHSA-vgmc-h5g6-xh2q](https://github.com/pluk-inc/markdown-preview/security/advisories/GHSA-vgmc-h5g6-xh2q), state `triage` |
+| Preview document has no Content-Security-Policy | Issue → PR | drafted, held pending upstream's response to the advisory |
 | `ALLOWED_URI_REGEXP` permits `http`/`https` | Issue → PR, after the CSP lands | pending |
 
 The `md-asset:` finding goes through GitHub's private vulnerability reporting (enabled
@@ -133,8 +133,8 @@ Those are product decisions, not defects, and filing them would be noise.
 
 | # | Milestone | Contents | Status |
 |---|---|---|---|
-| **M0** | Repo setup | Remotes, `rerere`, tracking scripts, this document, FORK STATUS blocks | **in progress** |
-| **M1** | Upstream contributions | Advisory + CSP issue/PR + URI allowlist issue/PR | pending |
+| **M0** | Repo setup | Remotes, `rerere`, tracking scripts, this document, FORK STATUS blocks | ✅ done |
+| **M1** | Upstream contributions | Advisory + CSP issue/PR + URI allowlist issue/PR | **in progress** — advisory filed |
 | **M2** | Identity & release | Team ID, four bundle IDs, app group, display names; replace the Amore release pipeline; rewrite `CLAUDE.md` / `AGENTS.md` | pending |
 | **M3** | Deprivileging | Stub Sentry + PostHog; excise Sparkle; orphan CLI installer; collapse Privacy pane; drop `network.client` and test Quick Look | pending |
 | **M3b** | *Conditional* | Quick Look CSP, if dropping `network.client` regresses the extension | pending |
