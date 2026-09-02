@@ -146,6 +146,7 @@ merged it stops being our diff to carry:
 | `md-asset:` scheme has no path containment (`MarkdownAssetResolution.swift:49`) | Private security advisory | **filed 2026-09-02** — [GHSA-vgmc-h5g6-xh2q](https://github.com/pluk-inc/markdown-preview/security/advisories/GHSA-vgmc-h5g6-xh2q), state `triage` |
 | Preview document has no Content-Security-Policy | Issue → PR | drafted, held pending upstream's response to the advisory |
 | `ALLOWED_URI_REGEXP` permits `http`/`https` | Issue → PR, after the CSP lands | pending |
+| Mermaid diagrams do not render in Quick Look, though `README.md` says they do | Issue | drafted, ready to file |
 
 The `md-asset:` finding goes through GitHub's private vulnerability reporting (enabled
 on upstream), **not** a public issue: it describes an unfixed weakness in a shipping app
@@ -169,7 +170,8 @@ Those are product decisions, not defects, and filing them would be noise.
 | **F2** | *Future* | Full CSP on the main preview page | — |
 | **F3** | *Future* | Security-scoped bookmarks; drop the `/` read-only entitlement | — |
 | **F4** | *Future* | Click-to-load control for remote images in the app window, the way mail clients defer them | — |
-| **B1** | *Bug* | Mermaid diagrams do not render in Quick Look — pre-existing, not caused by the CSP | investigating |
+| **M2b** | Rebranding | Replace the app icon — needs artwork before the mechanical part can happen | pending |
+| **B1** | *Bug* | Mermaid diagrams do not render in Quick Look | ✅ **not ours** — reproduces on a stock upstream install; moved to the contribution track |
 
 ### Deferred, with reasons
 
@@ -186,6 +188,20 @@ crash, so it needs UI verification against KaTeX, Mermaid, highlight.js and the 
 button — the same care B1 is currently teaching us to apply. If upstream accepts the M1
 CSP PR, this arrives for free.
 
+**M2b — the app icon.** The fork still ships upstream's icon, so two identically named
+and identically iconed apps sit in the Dock. Upstream also has an open issue that their
+icon is too close to macOS Preview's, so there is a reason to change beyond
+differentiation.
+
+The mechanics are small: `md-preview/AppIcon.icon` is an Icon Composer document — an
+`icon.json` manifest plus a single PNG layer in `Assets/`. Replacing the artwork means
+swapping that PNG and updating the `image-name` and `name` fields, or rebuilding the
+document in Icon Composer (ships with Xcode 26). `ASSETCATALOG_COMPILER_APPICON_NAME` is
+already `AppIcon` and needs no change. `docs/app-icon.png` and the README screenshots are
+upstream marketing assets and can be left alone.
+
+Blocked on artwork, which is a design decision rather than a mechanical one.
+
 **F4 — click-to-load remote images in the app window.** Quick Look blocks remote images
 outright (M3b), and that is the right default for a surface reached by pressing space on
 a file you may not have chosen. The app window is a deliberate act, so the eventual
@@ -194,16 +210,30 @@ offering to. Deferred because it needs UI, a per-document decision, and somewher
 remember it — it is a feature, not a security prerequisite. F2 (a blanket CSP for that
 page) is the cruder version that could land first.
 
-**B1 — Mermaid in Quick Look.** Fenced `mermaid` blocks render as raw text in a grey box
-in Quick Look, though syntax highlighting and the copy button work. **This is not caused
-by the Quick Look CSP**: it reproduces identically with the policy disabled, which was
-verified by an A/B build. Upstream's `README.md` claims the feature works and the
-CHANGELOG carries several Mermaid-in-Quick-Look entries, so either it is broken for
-everyone or something in this fork's identity rename disturbed it. Ruled out so far:
-Mermaid is present in the appex, uses no `eval`, `Function`, workers, blob URLs or
-dynamic `import()`, and Quick Look renders with `vendorLoading: .inline` so the bundle is
-inlined rather than fetched. Next step is to check whether diagrams render in the app
-window, which separates "Quick Look only" from "broken everywhere on this build".
+**B1 — Mermaid in Quick Look. Resolved as an upstream bug, not ours.** Fenced `mermaid`
+blocks render as raw text in a grey box in Quick Look, while syntax highlighting and the
+copy button work. Confirmed on a **stock Homebrew install of upstream**, with our
+extension disabled via `pluginkit -e ignore` so the baseline was honest. Upstream's
+`README.md` says diagrams "render as diagrams in both the app and Quick Look previews",
+and the CHANGELOG carries several Mermaid-in-Quick-Look entries, so the documentation is
+wrong or the feature regressed there.
+
+Two false leads worth recording, because both cost time:
+
+- **The CSP was suspected first.** An A/B build with `QuickLookContentPolicy` disabled
+  reproduced the failure exactly, clearing it.
+- **A local reproduction was attempted in the SPM test harness and is not possible.**
+  `bundledVendorScriptTag` reads from `Bundle.main`, which in an SPM test has no vendor
+  resources, so the harness produced a page with no Mermaid in it at all and reported
+  zero CSP violations. That looked like evidence and was not.
+
+Also ruled out: Mermaid is present in the appex, and uses no `eval`, `Function`, workers,
+blob URLs or dynamic `import()`. Quick Look renders with `vendorLoading: .inline`, so the
+bundle is inlined rather than fetched over a scheme that could fail.
+
+The remaining hypothesis for whoever picks this up: Mermaid is a 3 MB bundle that renders
+asynchronously, and Quick Look may snapshot or tear down the preview before it finishes.
+That would fit the symptom — the figure container is emitted, the SVG never replaces it.
 
 **F3 — the `/` read-only entitlement.** Both targets carry
 `com.apple.security.temporary-exception.files.absolute-path.read-only` = `/`. There is no
