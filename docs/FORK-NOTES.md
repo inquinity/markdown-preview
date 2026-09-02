@@ -165,13 +165,19 @@ Those are product decisions, not defects, and filing them would be noise.
 | **M3** | Deprivileging | Stub Sentry + PostHog; excise Sparkle; orphan CLI installer; collapse Privacy pane; drop `network.client` and test Quick Look | ✅ done |
 | **M3b** | *Conditional* | Quick Look CSP — the extension does need `network.client`, so the page blocks remote content instead | ✅ done |
 | **M4** | Containment | `md-asset:` confinement — **skipped entirely if upstream accepts the M1 advisory** | pending |
-| **M5** | Distribution | Notarize, verify on a second Mac, ship via corporate share or Dropbox | pending |
-| **F1** | *Future* | Private Homebrew tap (`inquinity/homebrew-tap`) | — |
-| **F2** | Hardening | CSP on the app preview page and editor (`PreviewContentPolicy`) | ✅ done — **needs UI verification** |
-| **F3** | *Future* | Security-scoped bookmarks; drop the `/` read-only entitlement | — |
-| **F4** | *Future* | Click-to-load control for remote images in the app window, the way mail clients defer them | — |
 | **M2b** | Rebranding | Replace the app icon | ✅ done — placeholder, regenerate with `scripts/make-icon.swift` |
-| **B1** | *Bug* | Mermaid diagrams do not render in Quick Look | ✅ **not ours** — reproduces on a stock upstream install; moved to the contribution track |
+| **M5** | Distribution | Notarize (✅ `dist/MDView 1.0.0.dmg`, verified: stapled, spctl-accepted, correct identity/version), verify on a second Mac (pending), ship via corporate share or Dropbox (pending) | **in progress** |
+
+## Backlog
+
+Unscheduled — not part of the milestone sequence above, and not blocking M5. `B1` (Mermaid in Quick Look) isn't listed here: it's an upstream bug, tracked in the Upstream contribution track table above rather than duplicated.
+
+| # | Item | Notes |
+|---|---|---|
+| **F1** | Private Homebrew tap (`inquinity/homebrew-tap`) | Explicitly *not* part of M5 — M5 ships by corporate share / Dropbox. A tap is a separate, later distribution channel. |
+| **F2** | CSP on the app preview page and editor (`PreviewContentPolicy`) | ✅ done and verified — math and editing confirmed working after the CSP landed. |
+| **F3** | Security-scoped bookmarks; drop the `/` read-only entitlement | |
+| **F4** | Click-to-load control for remote images in the app window, the way mail clients defer them | |
 
 ### Deferred, with reasons
 
@@ -193,10 +199,12 @@ the scheme after first paint; the handler serves only an allow-listed set of bun
 files, so it is narrower than it appears. `font-src data:` covers the bundled KaTeX CSS,
 which carries its fonts as base64.
 
-**A CSP fails silently** — a blocked resource is an unrendered element, not an error — so
-this needs verification by eye against math, diagrams, highlighted code, local images and
-the copy button, in both the reader and the editor. Unit tests pin the policy string; they
-cannot tell you the page still looks right.
+**A CSP fails silently** — a blocked resource is an unrendered element, not an error, so
+unit tests pinning the policy string cannot tell you the page still looks right. **Verified
+by eye**: math renders and editing works in the app window with the policy applied.
+Diagrams were not part of that check — Mermaid was separately found not to render in
+Quick Look at all (B1, an upstream bug), and its status in the app window under this CSP
+has not been explicitly confirmed either way.
 
 **M2b — the app icon. Done, with a placeholder.** The fork shipped upstream's icon, so two
 identically named and identically iconed apps sat in the Dock — and upstream has an open
