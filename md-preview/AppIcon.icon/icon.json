@@ -8,10 +8,10 @@
         {
           "fill" : "none",
           "hidden" : false,
-          "image-name" : "ChatGPT Image Apr 30, 2026, 06_55_12 PM.png",
-          "name" : "ChatGPT Image Apr 30, 2026, 06_55_12 PM",
+          "image-name" : "AppIconLayer.png",
+          "name" : "AppIconLayer",
           "position" : {
-            "scale" : 0.82,
+            "scale" : 1.0,
             "translation-in-points" : [
               0,
               0
