@@ -33,13 +33,28 @@ Recorded here because it is the whole reason for the fork:
 None of these are wrong for a consumer app. They are simply incompatible with
 our use.
 
-The removal is belt and braces: the code is gone *and* neither the app nor the
-Quick Look extension is granted `com.apple.security.network.client`, so the
-sandbox refuses outbound connections even if a future merge reintroduces
-something that tries. Verify against a signed build with:
+**The guarantee is that the code is gone — not that the sandbox forbids it.**
+
+An earlier version of this document claimed both. That was wrong, and the
+correction matters: `com.apple.security.network.client` was removed from both
+targets in M3, and **both surfaces rendered blank**. A sandboxed app cannot
+complete a WKWebView load without that entitlement. It is not about `md-asset:`
+subresources — the Quick Look extension inlines everything and failed the same
+way — WebKit routes every resource load through its networking process, and the
+sandbox gates that on this entitlement.
+
+So the entitlement is back on both targets and cannot be removed. What holds:
+
+| Claim | Enforced by |
+|---|---|
+| The app never contacts a server on its own | The code is gone — see the stubbed reporters and the excised updater, guarded by `ForkPostureTests` |
+| A previewed document cannot phone home in Quick Look | `QuickLookContentPolicy`, a CSP in the page |
+| A previewed document cannot phone home in the app window | **Nothing yet — this is F2, and it is now the primary control rather than a nice-to-have** |
+
+Verify empirically rather than by reading entitlements, which is what misled us:
 
 ```bash
-codesign -d --entitlements - --xml "Markdown Preview.app" | grep network.client
+sudo lsof -i -a -p $(pgrep -f "Markdown Preview") -r 2
 ```
 
 ## Branch model
@@ -158,11 +173,18 @@ Those are product decisions, not defects, and filing them would be noise.
 
 ### Deferred, with reasons
 
-**F2 — CSP on the main preview page.** The page relies on inline scripts for the host
-bridge, morphdom wiring and theming, so the policy needs `'unsafe-inline'` and careful
-testing against KaTeX, Mermaid, highlight.js and the copy-button bridge. A CSP violation
-shows up as a silently unrendered element, not a crash. Deferred until the fork is
-otherwise stable. If upstream accepts the M1 CSP PR, this arrives for free.
+**F2 — CSP on the main preview page. Promoted: this is now the primary control, not a
+nice-to-have.** With `com.apple.security.network.client` proven un-removable, nothing
+currently stops a document in the app window from loading a remote image and telling its
+host the file was opened. The Quick Look side is covered; this one is not.
+
+It is still the harder of the two. The page relies on inline scripts for the host bridge,
+morphdom wiring and theming, so the policy needs `'unsafe-inline'`, and it serves scripts
+and images over the `md-asset:` scheme, so `QuickLookContentPolicy` cannot simply be
+pointed at it. A CSP violation shows up as a silently unrendered element rather than a
+crash, so it needs UI verification against KaTeX, Mermaid, highlight.js and the copy
+button — the same care B1 is currently teaching us to apply. If upstream accepts the M1
+CSP PR, this arrives for free.
 
 **F4 — click-to-load remote images in the app window.** Quick Look blocks remote images
 outright (M3b), and that is the right default for a surface reached by pressing space on
