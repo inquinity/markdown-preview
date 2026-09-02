@@ -7,18 +7,18 @@
 > **[docs/FORK-NOTES.md](docs/FORK-NOTES.md)** first — it is the source of truth for how
 > this repository differs from the document below.
 >
-> - **Do not run `scripts/release.sh` or `scripts/rollback-release.sh`.** They drive the
->   Amore CLI against upstream's account and signing identity, neither of which we have.
->   The release pipeline is being replaced in milestone M2.
-> - The **Project facts** table below still describes upstream. The bundle identifiers,
->   team ID and product name change in M2.
+> - **Releases go through `scripts/build-release.sh`.** Upstream's `release.sh` and
+>   `rollback-release.sh` drove the Amore CLI against their account and have been removed.
+> - The **Project facts** table below is upstream's and is now partly wrong: this fork
+>   builds as `com.altmansoftwaredesign.markdown-preview` under team `45GJWJVQN2`.
+>   See the Signing configuration section.
 > - The fork carries **deliberately dead code** — an orphaned CLI installer and stubbed
 >   telemetry reporters. This is load-bearing for cheap upstream merges. Do not remove it.
 > - Sync with `git merge upstream/main`. **Never rebase `main`** — it is published.
 >
 > Everything after this block is upstream's documentation, preserved as-is.
 
-A macOS app for previewing Markdown files. AppKit, sandboxed, ships with a Quick Look extension. Updates via Sparkle, distributed via Amore.
+A macOS app for previewing Markdown files. AppKit, sandboxed, ships with a Quick Look extension. Updates via Sparkle; this fork is distributed by hand.
 
 ## Project facts
 
@@ -31,75 +31,69 @@ A macOS app for previewing Markdown files. AppKit, sandboxed, ships with a Quick
 | Min macOS | 15.0 |
 | Sandboxed | yes — uses Sparkle XPC services for updates |
 | Auto-updater | Sparkle 2.x (Swift package) |
-| Distribution | Amore (managed) with custom domain `storage.md-preview.app` |
+| Distribution      | By hand — see `docs/INTERNAL-INSTALL.md`                    |
 
 Version is managed centrally in `Version.xcconfig` (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`). Both the app and the quick-look extension inherit from it.
 
 ## Release pipeline
 
-### Branch and PR naming
+This fork builds and hands out the DMG directly. There is no hosted appcast, no
+Sparkle feed and no GitHub release — see `docs/INTERNAL-INSTALL.md` for how
+recipients install it.
 
-Every release goes through a dedicated branch and PR — never push the version bump or changelog directly to `main`.
-
-- **Branch name**: `release/X.Y.Z` — exactly the marketing version, no `v` prefix, no build number, no suffix. Examples: `release/0.0.10`, `release/1.2.0`. Beta cuts use `release/X.Y.Z-betaN` (e.g. `release/0.1.0-beta1`).
-- **PR title**: `Release X.Y.Z (N)` where `N` is `CURRENT_PROJECT_VERSION`. Example: `Release 0.0.10 (14)`. This matches the commit message the release script writes, so the PR, the bump commit, and the eventual git tag all line up. For betas: `Release X.Y.Z-betaN (build)`.
-- **PR body**: short Summary (version bump + changelog added), a "What's in X.Y.Z" section that mirrors the changelog bullets, and a Test plan.
-- **One PR per release**. The branch contains only the bump (`Version.xcconfig`) and the new `CHANGELOG.md` entry — keep unrelated changes out so the release diff stays auditable.
-
-### Commands
-
-One command:
+Before releasing, **add a `CHANGELOG.md` entry** for the version being shipped;
+the script refuses to build without one. **Always invoke the
+`changelog-maintenance` skill** via the Skill tool when writing that entry —
+do not draft freeform.
 
 ```bash
-./scripts/release.sh                     # release current Version.xcconfig
-./scripts/release.sh --version 0.0.2     # bump marketing version (auto-bumps build)
-./scripts/release.sh --version 0.0.2 --build 7
-./scripts/release.sh --beta              # amore --beta + GH prerelease
-./scripts/release.sh --draft             # amore --draft, no GH release
-./scripts/release.sh --skip-github       # local amore release only
+./scripts/build-release.sh                    # build the version in Version.xcconfig
+./scripts/build-release.sh --version 0.0.53   # bump the marketing version first
+./scripts/build-release.sh --version 0.0.53 --build 57
+./scripts/build-release.sh --dry-run          # print every step, build nothing
+./scripts/build-release.sh --skip-notarize    # local smoke test; will NOT open elsewhere
 ```
 
-Before running, **add a `CHANGELOG.md` entry** for the version being shipped. **Always invoke the `changelog-maintenance` skill** (`.claude/skills/changelog-maintenance`) via the Skill tool whenever the user asks you to write, generate, or update a changelog entry — do not draft freeform. The skill enforces the project's house format, the Keep-a-Changelog category split (Added / Changed / Fixed / Security), and contributor crediting (it always inspects `git log` and `gh pr list` for non-maintainer authors and adds a `### Contributors` block with `@username` GitHub tags when any are found).
+The script archives, exports a Developer ID build, notarizes and staples the
+app, packages the DMG, then signs, notarizes and staples the DMG in its own
+right. Two notarization submissions: Gatekeeper assesses what the reader
+downloaded, not only the app inside it, and `hdiutil` leaves the image unsigned.
+It finishes with an `spctl` assessment and refuses to report success if that
+fails.
 
-Entry shape:
-
-```md
-## [0.0.2] – 2026-05-01
-
-Short narrative summary.
-
-- **Bullet for each change.**
-- Bug fix bullet.
-```
-
-The script:
-1. Validates the changelog entry exists for the resolved version
-2. Updates `Version.xcconfig` and commits as `Release X.Y.Z (N)` if it changed
-3. Runs `amore release --scheme md-preview --release-notes "$NOTES"` (full pipeline: archive → sign → DMG → notarize → EdDSA-sign → upload → publish appcast)
-4. Tags `vX.Y.Z`, pushes, creates GitHub release with DMG asset
-
-Source of truth: `Version.xcconfig` for the version numbers, `CHANGELOG.md` for the notes.
+Version numbers live once, in `Version.xcconfig`. Release notes live in
+`CHANGELOG.md`.
 
 ## Rolling back a release
 
+Nothing is published, so there is nothing to unpublish. Withdraw a bad build by
+deleting the DMG from wherever it was shared and handing out the previous one.
+Tell anyone who already installed it — without Sparkle, no update reaches them
+on its own.
+
+## Signing configuration
+
+| Thing | Value |
+|---|---|
+| Team ID | `45GJWJVQN2` (Altman Software Design, LLC) |
+| Signing identity | `Developer ID Application: Altman Software Design, LLC (45GJWJVQN2)` |
+| Notary keychain profile | `altman-notary` |
+| Certificate expires | 2031-05-27 |
+
+The notary profile is not per-project — it stores an Apple ID, team ID and
+app-specific password, so one profile covers everything shipped under this team.
+Recreate it with:
+
 ```bash
-./scripts/rollback-release.sh --latest             # unpublish latest, delete GH release+tag
-./scripts/rollback-release.sh 0.0.2                # unpublish specific version
-./scripts/rollback-release.sh 0.0.2 --delete       # permanently delete on Amore
-./scripts/rollback-release.sh 0.0.2 --keep-github  # leave GitHub release in place
-./scripts/rollback-release.sh --latest --yes       # skip the confirmation prompt
+xcrun notarytool store-credentials "altman-notary" --team-id 45GJWJVQN2
 ```
 
-Default is **unpublish** (reversible — flips `published=false` on Amore so it disappears from the appcast). Use `--delete` only when you're sure; it permanently removes the release. To re-publish after a non-destructive rollback: `amore releases update <version> -b doc.md-preview --published true`.
+If `codesign` fails with `errSecInternalComponent`, the private key's ACL is
+refusing non-interactive use. Fix it once with:
 
-## Amore configuration (already wired)
-
-- **Hosting**: Amore-managed with custom domain `storage.md-preview.app`
-- **Codesign identity**: `Developer ID Application: Mohamed Fauzaan (5P3TSMNV42)`
-- **Notary keychain profile**: `md-preview-notary`
-- **EdDSA public key** (in Info.plist `SUPublicEDKey`): `gIQjgqfjkIR+egQ4S1oBLxE/NCDxpXXGdZXSpn04VAY=` — private key in login Keychain
-
-To inspect or change: `amore config show --bundle-id doc.md-preview` / `amore config set ...`. CLI lives at `/usr/local/bin/amore`.
+```bash
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s ~/Library/Keychains/login.keychain-db
+```
 
 ## Common Xcode tasks
 
