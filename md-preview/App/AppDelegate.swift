@@ -90,8 +90,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private weak var fullContentWidthMenuItem: NSMenuItem?
     private var isDocumentPromptScheduled = false
     private var documentPromptScheduleGeneration = 0
-    private var didReceiveOpenURLsDuringLaunch = false
-    private var hasFinishedLaunching = false
     private var pendingOpenURLCount = 0
     private var isTerminationSaveInProgress = false
     private var pendingTerminationSaveCount = 0
@@ -112,10 +110,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installSettingsMenuItem()
         installAppMenuItemIcons()
         installViewMenuItemIcons()
-        hasFinishedLaunching = true
-        if !didReceiveOpenURLsDuringLaunch {
-            scheduleDocumentPrompt(requiresNoDocuments: true)
-        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -127,22 +121,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        scheduleDocumentPrompt(requiresNoDocuments: true)
-        return true
+        false
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            scheduleDocumentPrompt(requiresNoDocuments: true)
-            return false
-        }
-        return true
+        true
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        if !hasFinishedLaunching {
-            didReceiveOpenURLsDuringLaunch = true
-        }
         cancelScheduledDocumentPrompt()
 
         var malformedSchemeURLs: [URL] = []
