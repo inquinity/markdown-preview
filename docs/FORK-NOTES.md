@@ -147,12 +147,14 @@ Those are product decisions, not defects, and filing them would be noise.
 | **M1** | Upstream contributions | Advisory + CSP issue/PR + URI allowlist issue/PR | **in progress** — advisory filed |
 | **M2** | Identity & release | Team ID, four bundle IDs, app group, display names; replace the Amore release pipeline; rewrite `CLAUDE.md` / `AGENTS.md` | ✅ done |
 | **M3** | Deprivileging | Stub Sentry + PostHog; excise Sparkle; orphan CLI installer; collapse Privacy pane; drop `network.client` and test Quick Look | ✅ done |
-| **M3b** | *Conditional* | Quick Look CSP, if dropping `network.client` regresses the extension | pending |
+| **M3b** | *Conditional* | Quick Look CSP — the extension does need `network.client`, so the page blocks remote content instead | ✅ done |
 | **M4** | Containment | `md-asset:` confinement — **skipped entirely if upstream accepts the M1 advisory** | pending |
 | **M5** | Distribution | Notarize, verify on a second Mac, ship via corporate share or Dropbox | pending |
 | **F1** | *Future* | Private Homebrew tap (`inquinity/homebrew-tap`) | — |
 | **F2** | *Future* | Full CSP on the main preview page | — |
 | **F3** | *Future* | Security-scoped bookmarks; drop the `/` read-only entitlement | — |
+| **F4** | *Future* | Click-to-load control for remote images in the app window, the way mail clients defer them | — |
+| **B1** | *Bug* | Mermaid diagrams do not render in Quick Look — pre-existing, not caused by the CSP | investigating |
 
 ### Deferred, with reasons
 
@@ -161,6 +163,25 @@ bridge, morphdom wiring and theming, so the policy needs `'unsafe-inline'` and c
 testing against KaTeX, Mermaid, highlight.js and the copy-button bridge. A CSP violation
 shows up as a silently unrendered element, not a crash. Deferred until the fork is
 otherwise stable. If upstream accepts the M1 CSP PR, this arrives for free.
+
+**F4 — click-to-load remote images in the app window.** Quick Look blocks remote images
+outright (M3b), and that is the right default for a surface reached by pressing space on
+a file you may not have chosen. The app window is a deliberate act, so the eventual
+answer there is the one mail clients settled on: don't load remote content, show a bar
+offering to. Deferred because it needs UI, a per-document decision, and somewhere to
+remember it — it is a feature, not a security prerequisite. F2 (a blanket CSP for that
+page) is the cruder version that could land first.
+
+**B1 — Mermaid in Quick Look.** Fenced `mermaid` blocks render as raw text in a grey box
+in Quick Look, though syntax highlighting and the copy button work. **This is not caused
+by the Quick Look CSP**: it reproduces identically with the policy disabled, which was
+verified by an A/B build. Upstream's `README.md` claims the feature works and the
+CHANGELOG carries several Mermaid-in-Quick-Look entries, so either it is broken for
+everyone or something in this fork's identity rename disturbed it. Ruled out so far:
+Mermaid is present in the appex, uses no `eval`, `Function`, workers, blob URLs or
+dynamic `import()`, and Quick Look renders with `vendorLoading: .inline` so the bundle is
+inlined rather than fetched. Next step is to check whether diagrams render in the app
+window, which separates "Quick Look only" from "broken everywhere on this build".
 
 **F3 — the `/` read-only entitlement.** Both targets carry
 `com.apple.security.temporary-exception.files.absolute-path.read-only` = `/`. There is no
