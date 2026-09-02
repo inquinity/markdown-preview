@@ -178,6 +178,7 @@ Unscheduled — not part of the milestone sequence above, and not blocking M5. `
 | **F2** | CSP on the app preview page and editor (`PreviewContentPolicy`) | ✅ done and verified — math and editing confirmed working after the CSP landed. |
 | **F3** | Security-scoped bookmarks; drop the `/` read-only entitlement | |
 | **F4** | Click-to-load control for remote images in the app window, the way mail clients defer them | |
+| **F5** | Manual-test `.md` files need pass/fail criteria a human can read off the screen | See below |
 
 ### Deferred, with reasons
 
@@ -241,6 +242,31 @@ answer there is the one mail clients settled on: don't load remote content, show
 offering to. Deferred because it needs UI, a per-document decision, and somewhere to
 remember it — it is a feature, not a security prerequisite. F2 (a blanket CSP for that
 page) is the cruder version that could land first.
+
+**F5 — manual-test `.md` files don't say what "pass" looks like.** Every fixture written
+for this fork (`tests/fixtures/security/*.md`, `tests/fixtures/relative-assets/*.md`) and
+every upstream demo file used the same way (`samples/*.md`) explains the threat or the
+feature to a *developer*, but none of them tell a *person looking at the rendered output*
+how to tell a pass from a failure. Concretely: opening `inline-html.md` and eyeballing it
+gives no way to confirm the credential-harvesting section was actually blocked — the
+automated `SanitizerNegativeTests` can tell, a person reading the page cannot. Same
+problem the other direction: `samples/codeblocks.md`'s Mermaid block is *expected* to
+fail in Quick Look (B1, upstream's bug) and *expected* to work in the app window, and
+nothing on the page says so — a tester has no way to distinguish "known, acceptable" from
+"newly broken."
+
+Scope, per the user: all three locations — security fixtures, asset fixtures, and
+upstream's samples.
+
+Open design question before implementing: `samples/*.md` is upstream's file, touched on
+their release cadence, so writing fork-specific pass/fail annotations directly into it is
+an edit to an upstream-maintained file, not a new one — the kind of thing this fork has
+otherwise avoided (see "New files are free" above). Two ways to resolve it: annotate
+`samples/*.md` in place and accept the small recurring merge cost, or leave `samples/`
+untouched and add a companion checklist (e.g. `docs/MANUAL-TEST-CHECKLIST.md`) mapping
+each sample file and section to its expected outcome and known exceptions. The fixtures
+under `tests/fixtures/` are ours either way and can be annotated directly with no such
+tradeoff.
 
 **B1 — Mermaid in Quick Look. Resolved as an upstream bug, not ours.** Fenced `mermaid`
 blocks render as raw text in a grey box in Quick Look, while syntax highlighting and the
