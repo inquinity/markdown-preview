@@ -10,6 +10,15 @@
 	</array>
 	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
+	<!-- Required for WKWebView inside a sandboxed app extension. Without it the
+	     WebContent process never completes its load, didFinish never fires, and
+	     the preview renders blank. Verified on this fork: removing it produced
+	     exactly that, while the extension still launched and qlmanage still
+	     exited cleanly — so a blank preview is the only symptom. Remote content
+	     is blocked by the Content-Security-Policy in the Quick Look shell
+	     instead of by the sandbox. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 	<!-- Quick Look grants the extension the previewed file, but not sibling
 	     images. The read-only exception lets InlineLocalAssets embed relative
 	     images as cid: QLPreviewReplyAttachment entries. -->

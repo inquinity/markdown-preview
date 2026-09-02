@@ -18,7 +18,14 @@ Expectations:
 
 - `images/local.png` renders.
 - `images dir/two words.png` renders (URL-decoded path).
-- The remote https image renders (network entitlement already granted).
+- ~~The remote https image renders (network entitlement already granted).~~
+  **Changed in this fork: the remote image must NOT render.**
+  `QuickLookContentPolicy` denies remote origins in the preview page, so a
+  document cannot disclose that it was opened when a reader merely presses
+  space in Finder. The extension still holds the network entitlement — it
+  renders blank without it — so the block is enforced by the page's
+  Content-Security-Policy rather than by the sandbox. A gap where this image
+  used to appear is the correct result. See `docs/FORK-NOTES.md`.
 - `images/missing.png` shows the broken-image glyph; the preview does not
   crash.
 
