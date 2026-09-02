@@ -135,7 +135,7 @@ Those are product decisions, not defects, and filing them would be noise.
 |---|---|---|---|
 | **M0** | Repo setup | Remotes, `rerere`, tracking scripts, this document, FORK STATUS blocks | ✅ done |
 | **M1** | Upstream contributions | Advisory + CSP issue/PR + URI allowlist issue/PR | **in progress** — advisory filed |
-| **M2** | Identity & release | Team ID, four bundle IDs, app group, display names; replace the Amore release pipeline; rewrite `CLAUDE.md` / `AGENTS.md` | pending |
+| **M2** | Identity & release | Team ID, four bundle IDs, app group, display names; replace the Amore release pipeline; rewrite `CLAUDE.md` / `AGENTS.md` | ✅ done |
 | **M3** | Deprivileging | Stub Sentry + PostHog; excise Sparkle; orphan CLI installer; collapse Privacy pane; drop `network.client` and test Quick Look | pending |
 | **M3b** | *Conditional* | Quick Look CSP, if dropping `network.client` regresses the extension | pending |
 | **M4** | Containment | `md-asset:` confinement — **skipped entirely if upstream accepts the M1 advisory** | pending |
