@@ -7,7 +7,12 @@
 > **[docs/FORK-NOTES.md](docs/FORK-NOTES.md)** first — it is the source of truth for how
 > this repository differs from the document below.
 >
-> - **Releases go through `scripts/build-release.sh`.** Upstream's `release.sh` and
+> - **Releases go through `scripts/build.sh --release`.** It builds, signs, notarizes
+>   and packages a DMG into `dist/`, with no `CHANGELOG.md` requirement. It reuses
+>   `Version.xcconfig` and composes with `--update` to bump the version first.
+>   `scripts/build-release.sh` also works and produces the same kind of artifact via a
+>   different (archive/export) path, gated on a `CHANGELOG.md` entry, but it is not the
+>   one actually in use — don't default to it. Upstream's `release.sh` and
 >   `rollback-release.sh` drove the Amore CLI against their account and have been removed.
 > - The **Project facts** table below is upstream's and is now partly wrong: this fork
 >   builds as `com.altmansoftwaredesign.markdown-preview` under team `45GJWJVQN2`.
@@ -41,28 +46,39 @@ This fork builds and hands out the DMG directly. There is no hosted appcast, no
 Sparkle feed and no GitHub release — see `docs/INTERNAL-INSTALL.md` for how
 recipients install it.
 
-Before releasing, **add a `CHANGELOG.md` entry** for the version being shipped;
-the script refuses to build without one. **Always invoke the
-`changelog-maintenance` skill** via the Skill tool when writing that entry —
-do not draft freeform.
+**The release script in actual use is `scripts/build.sh --release`**, not
+`scripts/build-release.sh`. No `CHANGELOG.md` entry is required — that gate exists
+only on the other script, which is not part of this workflow. Don't reach for it, and
+don't hold a release back to write a changelog entry that nothing here checks for.
 
 ```bash
-./scripts/build-release.sh                    # build the version in Version.xcconfig
-./scripts/build-release.sh --version 1.1.0    # bump the marketing version first
-./scripts/build-release.sh --version 1.1.0 --build 2
-./scripts/build-release.sh --dry-run          # print every step, build nothing
-./scripts/build-release.sh --skip-notarize    # local smoke test; will NOT open elsewhere
+./scripts/build.sh                            # local .app only, in ./build
+./scripts/build.sh --release                  # + a signed, notarized DMG in ./dist
+./scripts/build.sh --update revision --release   # bump the version first, then release
+./scripts/build.sh --update minor --release
 ```
 
-The script archives, exports a Developer ID build, notarizes and staples the
-app, packages the DMG, then signs, notarizes and staples the DMG in its own
-right. Two notarization submissions: Gatekeeper assesses what the reader
-downloaded, not only the app inside it, and `hdiutil` leaves the image unsigned.
-It finishes with an `spctl` assessment and refuses to report success if that
-fails.
+`--release` fails immediately, before compiling, if the Developer ID identity or the
+notary profile aren't in the keychain — it never falls back to an ad-hoc signature the
+way a plain build does, since a "release" DMG nobody else's Mac can open isn't worth
+producing quietly. It reuses the compile it already did for the plain build rather than
+re-archiving, then packages, signs, notarizes and staples the DMG, finishing with an
+`spctl` Gatekeeper check. Two notarization submissions happen along the way — the app,
+then the disk image — because Gatekeeper assesses what the reader downloaded, not only
+the app inside it, and `hdiutil` leaves the image itself unsigned.
 
-Version numbers live once, in `Version.xcconfig`. Release notes live in
-`CHANGELOG.md`.
+`scripts/build-release.sh` still exists and still works — archive/export instead of a
+plain build, gated on a `## [X.Y.Z]` entry in `CHANGELOG.md`. If that gate is ever
+wanted again, invoke the `changelog-maintenance` skill for the entry rather than
+drafting one freeform; until then, treat the script as unused.
+
+Version numbers live once, in `Version.xcconfig`. `scripts/build.sh --update
+{major,minor,revision}` bumps them and the build number together.
+
+Two more local-only helpers, both operating on `./build/MDView.app` (a plain build's
+output, not `--release`'s DMG): `scripts/bundle.sh` zips it for sneaker-net transfer,
+`scripts/install.sh` copies it into `/Applications` and launches it once — required for
+Quick Look to register, see `docs/INTERNAL-INSTALL.md`.
 
 ## Rolling back a release
 
