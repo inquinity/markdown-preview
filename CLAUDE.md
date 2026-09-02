@@ -18,7 +18,7 @@
 >
 > Everything after this block is upstream's documentation, preserved as-is.
 
-A macOS app for previewing Markdown files. AppKit, sandboxed, ships with a Quick Look extension. Updates via Sparkle; this fork is distributed by hand.
+A macOS app for previewing Markdown files. AppKit, sandboxed, ships with a Quick Look extension. This fork has no auto-updater and is distributed by hand.
 
 ## Project facts
 
@@ -29,8 +29,8 @@ A macOS app for previewing Markdown files. AppKit, sandboxed, ships with a Quick
 | Scheme | `md-preview` |
 | Quick Look target | `quick-look` (embedded extension) |
 | Min macOS | 15.0 |
-| Sandboxed | yes — uses Sparkle XPC services for updates |
-| Auto-updater | Sparkle 2.x (Swift package) |
+| Sandboxed         | yes                                                         |
+| Auto-updater      | none — Sparkle removed in this fork                         |
 | Distribution      | By hand — see `docs/INTERNAL-INSTALL.md`                    |
 
 Version is managed centrally in `Version.xcconfig` (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`). Both the app and the quick-look extension inherit from it.
@@ -102,5 +102,3 @@ xcodebuild -project md-preview.xcodeproj -scheme md-preview -configuration Debug
 xcodebuild -resolvePackageDependencies -project md-preview.xcodeproj
 ```
 
-Sparkle helper tools (sign_update / generate_keys / generate_appcast) live at:
-`~/Library/Developer/Xcode/DerivedData/md-preview-*/SourcePackages/artifacts/sparkle/Sparkle/bin/`
