@@ -25,7 +25,7 @@ A macOS app for previewing Markdown files. AppKit, sandboxed, ships with a Quick
 | Thing             | Value                                                       |
 | ----------------- | ----------------------------------------------------------- |
 | Bundle id         | `doc.md-preview`                                            |
-| Product name      | `Markdown Preview`                                          |
+| Product name      | `MDView` (renamed in this fork)                             |
 | Scheme            | `md-preview`                                                |
 | Quick Look target | `quick-look` (embedded extension)                           |
 | Min macOS         | 15.0                                                        |
