@@ -7,7 +7,7 @@
 	<key>PostHogProjectToken</key>
 	<string>$(POSTHOG_PROJECT_TOKEN)</string>
 	<key>MarkdownPreviewAppGroupIdentifier</key>
-	<string>$(DEVELOPMENT_TEAM).doc.md-preview</string>
+	<string>$(DEVELOPMENT_TEAM).com.altmansoftwaredesign.markdown-preview</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -36,12 +36,12 @@
 				<string>public.markdown</string>
 				<string>net.ia.markdown</string>
 				<string>com.unknown.md</string>
-				<string>doc.md-preview.mdown</string>
-				<string>doc.md-preview.mkd</string>
-				<string>doc.md-preview.mkdn</string>
-				<string>doc.md-preview.mdwn</string>
-				<string>doc.md-preview.mdtxt</string>
-				<string>doc.md-preview.mdtext</string>
+				<string>com.altmansoftwaredesign.markdown-preview.mdown</string>
+				<string>com.altmansoftwaredesign.markdown-preview.mkd</string>
+				<string>com.altmansoftwaredesign.markdown-preview.mkdn</string>
+				<string>com.altmansoftwaredesign.markdown-preview.mdwn</string>
+				<string>com.altmansoftwaredesign.markdown-preview.mdtxt</string>
+				<string>com.altmansoftwaredesign.markdown-preview.mdtext</string>
 			</array>
 			<key>NSDocumentClass</key>
 			<string>$(PRODUCT_MODULE_NAME).MarkdownDocument</string>
@@ -52,7 +52,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://release.md-preview.app/v1/apps/doc.md-preview/appcast.xml</string>
+	<string>https://release.md-preview.app/v1/apps/com.altmansoftwaredesign.markdown-preview/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>gIQjgqfjkIR+egQ4S1oBLxE/NCDxpXXGdZXSpn04VAY=</string>
 	<key>UTExportedTypeDeclarations</key>
@@ -65,7 +65,7 @@
 			<key>UTTypeDescription</key>
 			<string>Markdown Document (mdown)</string>
 			<key>UTTypeIdentifier</key>
-			<string>doc.md-preview.mdown</string>
+			<string>com.altmansoftwaredesign.markdown-preview.mdown</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -82,7 +82,7 @@
 			<key>UTTypeDescription</key>
 			<string>Markdown Document (mkd)</string>
 			<key>UTTypeIdentifier</key>
-			<string>doc.md-preview.mkd</string>
+			<string>com.altmansoftwaredesign.markdown-preview.mkd</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -99,7 +99,7 @@
 			<key>UTTypeDescription</key>
 			<string>Markdown Document (mkdn)</string>
 			<key>UTTypeIdentifier</key>
-			<string>doc.md-preview.mkdn</string>
+			<string>com.altmansoftwaredesign.markdown-preview.mkdn</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -116,7 +116,7 @@
 			<key>UTTypeDescription</key>
 			<string>Markdown Document (mdwn)</string>
 			<key>UTTypeIdentifier</key>
-			<string>doc.md-preview.mdwn</string>
+			<string>com.altmansoftwaredesign.markdown-preview.mdwn</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -133,7 +133,7 @@
 			<key>UTTypeDescription</key>
 			<string>Markdown Document (mdtxt)</string>
 			<key>UTTypeIdentifier</key>
-			<string>doc.md-preview.mdtxt</string>
+			<string>com.altmansoftwaredesign.markdown-preview.mdtxt</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -150,7 +150,7 @@
 			<key>UTTypeDescription</key>
 			<string>Markdown Document (mdtext)</string>
 			<key>UTTypeIdentifier</key>
-			<string>doc.md-preview.mdtext</string>
+			<string>com.altmansoftwaredesign.markdown-preview.mdtext</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
