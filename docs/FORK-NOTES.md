@@ -49,7 +49,7 @@ So the entitlement is back on both targets and cannot be removed. What holds:
 |---|---|
 | The app never contacts a server on its own | The code is gone — see the stubbed reporters and the excised updater, guarded by `ForkPostureTests` |
 | A previewed document cannot phone home in Quick Look | `QuickLookContentPolicy`, a CSP in the page |
-| A previewed document cannot phone home in the app window | **Nothing yet — this is F2, and it is now the primary control rather than a nice-to-have** |
+| A previewed document cannot phone home in the app window or the editor | `PreviewContentPolicy`, a CSP in the page |
 
 Verify empirically rather than by reading entitlements, which is what misled us:
 
@@ -167,7 +167,7 @@ Those are product decisions, not defects, and filing them would be noise.
 | **M4** | Containment | `md-asset:` confinement — **skipped entirely if upstream accepts the M1 advisory** | pending |
 | **M5** | Distribution | Notarize, verify on a second Mac, ship via corporate share or Dropbox | pending |
 | **F1** | *Future* | Private Homebrew tap (`inquinity/homebrew-tap`) | — |
-| **F2** | *Future* | Full CSP on the main preview page | — |
+| **F2** | Hardening | CSP on the app preview page and editor (`PreviewContentPolicy`) | ✅ done — **needs UI verification** |
 | **F3** | *Future* | Security-scoped bookmarks; drop the `/` read-only entitlement | — |
 | **F4** | *Future* | Click-to-load control for remote images in the app window, the way mail clients defer them | — |
 | **M2b** | Rebranding | Replace the app icon — needs artwork before the mechanical part can happen | pending |
@@ -175,18 +175,28 @@ Those are product decisions, not defects, and filing them would be noise.
 
 ### Deferred, with reasons
 
-**F2 — CSP on the main preview page. Promoted: this is now the primary control, not a
-nice-to-have.** With `com.apple.security.network.client` proven un-removable, nothing
-currently stops a document in the app window from loading a remote image and telling its
-host the file was opened. The Quick Look side is covered; this one is not.
+**F2 — CSP on the app preview page and editor. Implemented as
+`md-preview/Rendering/PreviewContentPolicy.swift`.** With
+`com.apple.security.network.client` proven un-removable, this is the control that stops a
+document reaching the network, not the sandbox.
 
-It is still the harder of the two. The page relies on inline scripts for the host bridge,
-morphdom wiring and theming, so the policy needs `'unsafe-inline'`, and it serves scripts
-and images over the `md-asset:` scheme, so `QuickLookContentPolicy` cannot simply be
-pointed at it. A CSP violation shows up as a silently unrendered element rather than a
-crash, so it needs UI verification against KaTeX, Mermaid, highlight.js and the copy
-button — the same care B1 is currently teaching us to apply. If upstream accepts the M1
-CSP PR, this arrives for free.
+Applied at all three `loadHTMLString` sites in `MarkdownWebView` and at the editor's, so
+reading and editing are both covered. Kept separate from `QuickLookContentPolicy` on
+purpose: that page inlines its vendor bundles and carries images as `data:`/`cid:`, while
+this one fetches scripts and images over `md-asset:`. One shared policy would have to
+permit the union, which is weaker than either.
+
+`'unsafe-inline'` is unavoidable for scripts and styles — the host bridge, the DOMPurify
+bootstrap, the theme injection and CodeMirror are all emitted inline. `script-src
+md-asset:` is required because the reader lazy-loads KaTeX, highlight.js and Mermaid over
+the scheme after first paint; the handler serves only an allow-listed set of bundled
+files, so it is narrower than it appears. `font-src data:` covers the bundled KaTeX CSS,
+which carries its fonts as base64.
+
+**A CSP fails silently** — a blocked resource is an unrendered element, not an error — so
+this needs verification by eye against math, diagrams, highlighted code, local images and
+the copy button, in both the reader and the editor. Unit tests pin the policy string; they
+cannot tell you the page still looks right.
 
 **M2b — the app icon.** The fork still ships upstream's icon, so two identically named
 and identically iconed apps sit in the Dock. Upstream also has an open issue that their
