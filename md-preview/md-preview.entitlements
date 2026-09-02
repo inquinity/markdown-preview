@@ -10,6 +10,21 @@
     </array>
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
+    <!-- Required for WKWebView, and NOT removable.
+         A sandboxed app cannot complete a WKWebView load without this: the app
+         window renders entirely blank, because the page's DOMPurify never
+         arrives over the md-asset: scheme and sanitize() then fails closed.
+         The Quick Look extension fails the same way for the same reason, so
+         this is not about custom-scheme subresources — WebKit routes every
+         resource load through its networking process, which the sandbox gates
+         on this entitlement.
+         Verified on this fork by removing it and watching both surfaces go
+         blank. Nothing in this app's code opens a connection; that is enforced
+         by the code being absent (see CrashReporter and UsageAnalyticsReporter,
+         both stubs) and, for content-initiated requests, by
+         Content-Security-Policy — not by the sandbox. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
     <key>com.apple.security.print</key>
     <true/>
     <!-- Read-only access to the entire filesystem so the project navigator

@@ -16,37 +16,29 @@ final class ForkPostureTests: XCTestCase {
 
     // MARK: - Network egress
 
-    func testAppIsNotGrantedNetworkAccess() throws {
-        let entitlements = try plist(at: "md-preview/md-preview.entitlements")
-        XCTAssertNil(
-            entitlements["com.apple.security.network.client"],
-            """
-            The app has regained com.apple.security.network.client. This is the \
-            entitlement that makes "this build makes no network connections" \
-            structural rather than a promise. If something genuinely needs it, \
-            that is a decision to make deliberately, not by merge.
-            """
-        )
-    }
-
-    /// The inverse guard, and the one most likely to be "helpfully" undone.
+    /// Both targets need this entitlement and neither can give it up.
     ///
-    /// The Quick Look extension needs this entitlement. Removing it does not
-    /// fail the build, fail a test, or log anything — Quick Look simply renders
-    /// blank, because WKWebView inside a sandboxed app extension never
-    /// completes its load without it. This fork shipped that bug once already.
-    func testQuickLookExtensionKeepsNetworkAccessItCannotFunctionWithout() throws {
-        let entitlements = try plist(at: "quick-look/quick-look.entitlements")
-        XCTAssertEqual(
-            entitlements["com.apple.security.network.client"] as? Bool, true,
-            """
-            The Quick Look extension has lost com.apple.security.network.client. \
-            Quick Look will render blank — silently, with no error anywhere. \
-            Remote content is blocked by QuickLookContentPolicy instead of by \
-            the sandbox; removing the entitlement gains nothing and breaks \
-            previews.
-            """
-        )
+    /// A sandboxed app cannot complete a WKWebView load without it — the window
+    /// renders entirely blank. It was removed in M3 on the assumption that the
+    /// sandbox could enforce "no network connections" structurally; it cannot.
+    /// The guarantee rests on the absence of code that connects, plus a CSP for
+    /// content-initiated requests.
+    ///
+    /// This is asserted rather than merely documented so nobody re-derives the
+    /// original, wrong conclusion and ships a blank app.
+    func testBothTargetsKeepTheNetworkEntitlementWKWebViewRequires() throws {
+        for path in ["md-preview/md-preview.entitlements",
+                     "quick-look/quick-look.entitlements"] {
+            let entitlements = try plist(at: path)
+            XCTAssertEqual(
+                entitlements["com.apple.security.network.client"] as? Bool, true,
+                """
+                \(path) has lost com.apple.security.network.client. That surface \
+                will render blank — silently, with no error. Removing it does not \
+                buy a no-network guarantee; WKWebView simply stops working.
+                """
+            )
+        }
     }
 
     func testAppleEventsEntitlementsAreGone() throws {

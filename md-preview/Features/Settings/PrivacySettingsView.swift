@@ -23,7 +23,7 @@ struct PrivacySettingsView: View {
                     Text(L("None")).foregroundStyle(.secondary)
                 }
             } footer: {
-                Text(L("This build makes no network connections. Crash reporting, usage analytics and automatic updates have all been removed, and the app is not granted the sandbox entitlement that would allow outbound connections — so it cannot contact anything even if a future change tried to."))
+                Text(L("Crash reporting, usage analytics and automatic updates have all been removed, so nothing in this app contacts a server on its own. The sandbox entitlement that permits outbound connections is still present because WKWebView will not render without it — so the guarantee comes from the code that was removed, not from the sandbox."))
             }
 
             Section {
