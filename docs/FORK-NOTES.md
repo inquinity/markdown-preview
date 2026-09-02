@@ -179,7 +179,7 @@ Unscheduled — not part of the milestone sequence above, and not blocking M5. `
 | **F3** | Security-scoped bookmarks; drop the `/` read-only entitlement | |
 | **F4** | Click-to-load control for remote images in the app window, the way mail clients defer them | |
 | **F5** | Manual-test `.md` files need pass/fail criteria a human can read off the screen | See below |
-| **F7** | `MainMenu.strings` still says "Markdown Preview" — the actual Application menu (Quit, About, Hide, Help) | Not covered by the M2b rename, which only touched `Localizable.strings`. 6 literal instances in `en.lproj/MainMenu.strings`, more in `zh-Hans`. Also carries two now-orphaned menu items worth a look while in there: "Check for Updates…" (dead since M3 excised Sparkle — the item removes itself from the menu at runtime in `AppDelegate`, so this may be inert rather than visible, worth confirming) and "Send Anonymous Crash Reports" (toggles a stub that can never actually turn on). |
+| **F7** | Application menu still said "Markdown Preview" | ✅ done — see below. Two adjacent findings not acted on: "Check for Updates…" confirmed inert (removed from the menu at runtime), "Send Anonymous Crash Reports" confirmed live but wired to a stub — a real toggle that can never turn on. Neither touched; flagged for a decision. |
 | **F8** | Pick a final product name and icon | Both current ones are explicitly provisional: `MDView` was a quick pick to stop the Dock collision with upstream, and the icon (`scripts/make-icon.swift`) was called a placeholder when it shipped. Whatever gets decided needs to land in `Localizable.strings` *and* `MainMenu.strings` (see F7) *and* `AppIcon.icon`, not just one of them. |
 
 ### Deferred, with reasons
@@ -269,6 +269,32 @@ untouched and add a companion checklist (e.g. `docs/MANUAL-TEST-CHECKLIST.md`) m
 each sample file and section to its expected outcome and known exceptions. The fixtures
 under `tests/fixtures/` are ours either way and can be annotated directly with no such
 tradeoff.
+
+**F7 — the Application menu still said "Markdown Preview." Done.** The M2b rename only
+touched `Localizable.strings`, which covers everything looked up through `L()` — the
+Settings pane, dialogs, tooltips. It does not cover `MainMenu.xib`'s own menu items
+("Quit", "About", "Hide", the app menu's title and submenu), which macOS resolves
+straight from the nib rather than through `L()`. Three places actually needed fixing,
+not one: `en.lproj/MainMenu.strings` and `zh-Hans.lproj/MainMenu.strings` (runtime
+overrides for each locale) and `Base.lproj/MainMenu.xib` itself (the base text those
+overrides sit on top of, and what a future locale with no override would fall back to).
+All three renamed; 6 occurrences each in the base XIB and the English overrides, 12 in
+the Chinese overrides (title text is compound there, e.g. `退出 MDView`).
+
+`MainMenu.xib` also carries `customModule="Markdown_Preview"` on the AppDelegate and
+document-controller objects — stale, but not a functional risk: confirmed by checking
+what `ibtool` actually compiles the nib with, `--module MDView__Dev_`, sanitized from the
+live `PRODUCT_NAME` and independent of whatever the XIB's own attribute says. Left
+alone as out of scope for a user-visible-text fix; Interface Builder's own editor would
+show the stale name if anyone opened this file there, which is the only cost.
+
+Two menu items shared the same file and got looked at along the way, not fixed:
+**"Check for Updates…"** is confirmed dead — `AppDelegate` removes it from the menu at
+launch (a stub left over from M3's Sparkle removal). **"Send Anonymous Crash Reports"**
+is confirmed live and misleading — still wired to `toggleCrashReporting(_:)`, still shown
+in the menu, but `CrashReporter.isEnabled`'s setter is a no-op, so the checkbox can never
+actually turn on. Worth a decision (remove it like the updates item, or leave it as an
+honest "always off" state) but not decided here.
 
 **B1 — Mermaid in Quick Look. Resolved as an upstream bug, not ours.** Fenced `mermaid`
 blocks render as raw text in a grey box in Quick Look, while syntax highlighting and the
