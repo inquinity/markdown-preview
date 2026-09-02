@@ -7,27 +7,33 @@ import SwiftUI
 
 // MARK: - Privacy
 
+/// Upstream offers two toggles here: anonymous crash reports to Sentry, and
+/// anonymous usage analytics to PostHog. This fork ships neither, and neither
+/// does it ship Sparkle, so there is nothing to turn on or off — the pane
+/// states the guarantee instead.
+///
+/// The pane is kept rather than removed so `SettingsWindowController`'s tab
+/// list is untouched. See docs/FORK-NOTES.md.
 struct PrivacySettingsView: View {
-    @Bindable private var model = SettingsModel.shared
 
     var body: some View {
         Form {
             Section {
-                Toggle(L("Send anonymous crash reports"), isOn: $model.sendsCrashReports)
+                LabeledContent(L("Network activity")) {
+                    Text(L("None")).foregroundStyle(.secondary)
+                }
             } footer: {
-                Text(L("Crash reports contain diagnostic details such as stack traces and OS and app versions. They may include technical file paths; Markdown Preview does not deliberately attach document contents or personal information."))
+                Text(L("This build makes no network connections. Crash reporting, usage analytics and automatic updates have all been removed, and the app is not granted the sandbox entitlement that would allow outbound connections — so it cannot contact anything even if a future change tried to."))
             }
 
             Section {
-                Toggle(L("Share anonymous usage analytics"),
-                       isOn: $model.sharesAnonymousUsageAnalytics)
+                LabeledContent(L("Remote images")) {
+                    Text(L("Loaded")).foregroundStyle(.secondary)
+                }
             } footer: {
-                Text(L("When enabled, Markdown Preview sends at most one event per day when the app becomes active, linked to a random installation identifier. It also sends the app version, macOS major version, processor architecture, and locale country or region. This is used only to count daily and monthly active installations and understand basic platform compatibility. It does not send document contents, file names or paths, actions, screens, precise location, personal information, or advertising identifiers."))
+                Text(L("A Markdown document that references an image by http or https URL will still load it when previewed, which tells that server the document was opened. Only the app itself is silent."))
             }
         }
         .formStyle(.grouped)
-        .onAppear {
-            model.refreshFromExternalSources()
-        }
     }
 }
