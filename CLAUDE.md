@@ -48,8 +48,8 @@ do not draft freeform.
 
 ```bash
 ./scripts/build-release.sh                    # build the version in Version.xcconfig
-./scripts/build-release.sh --version 0.0.53   # bump the marketing version first
-./scripts/build-release.sh --version 0.0.53 --build 57
+./scripts/build-release.sh --version 1.1.0    # bump the marketing version first
+./scripts/build-release.sh --version 1.1.0 --build 2
 ./scripts/build-release.sh --dry-run          # print every step, build nothing
 ./scripts/build-release.sh --skip-notarize    # local smoke test; will NOT open elsewhere
 ```
