@@ -179,7 +179,7 @@ Unscheduled — not part of the milestone sequence above, and not blocking M5. `
 | **F3** | Security-scoped bookmarks; drop the `/` read-only entitlement | |
 | **F4** | Click-to-load control for remote images in the app window, the way mail clients defer them | |
 | **F5** | Manual-test `.md` files need pass/fail criteria a human can read off the screen | See below |
-| **F7** | Application menu still said "Markdown Preview" | ✅ done — see below. Two adjacent findings not acted on: "Check for Updates…" confirmed inert (removed from the menu at runtime), "Send Anonymous Crash Reports" confirmed live but wired to a stub — a real toggle that can never turn on. Neither touched; flagged for a decision. |
+| **F7** | Application menu still said "Markdown Preview" | ✅ done — see below. Its two adjacent findings ("Check for Updates…", "Send Anonymous Crash Reports") are also resolved — both removed from the menu on request, see below. |
 | **F8** | Pick a final product name and icon | Both current ones are explicitly provisional: `MDView` was a quick pick to stop the Dock collision with upstream, and the icon (`scripts/make-icon.swift`) was called a placeholder when it shipped. Whatever gets decided needs to land in `Localizable.strings` *and* `MainMenu.strings` (see F7) *and* `AppIcon.icon`, not just one of them. |
 
 ### Deferred, with reasons
@@ -288,13 +288,21 @@ live `PRODUCT_NAME` and independent of whatever the XIB's own attribute says. Le
 alone as out of scope for a user-visible-text fix; Interface Builder's own editor would
 show the stale name if anyone opened this file there, which is the only cost.
 
-Two menu items shared the same file and got looked at along the way, not fixed:
-**"Check for Updates…"** is confirmed dead — `AppDelegate` removes it from the menu at
-launch (a stub left over from M3's Sparkle removal). **"Send Anonymous Crash Reports"**
-is confirmed live and misleading — still wired to `toggleCrashReporting(_:)`, still shown
-in the menu, but `CrashReporter.isEnabled`'s setter is a no-op, so the checkbox can never
-actually turn on. Worth a decision (remove it like the updates item, or leave it as an
-honest "always off" state) but not decided here.
+Two menu items shared the same file, were found along the way, and — on request — removed
+outright rather than left inert. **"Check for Updates…"** was already dead at runtime
+(`AppDelegate` removed it from the menu at launch, a stub from M3's Sparkle removal); now
+the menu item, its nib outlet, and the removal code that existed only to hide it are all
+gone — the outlet had nothing left to preserve for upstream-diff-compatibility once its
+only consumer was deleted. **"Send Anonymous Crash Reports"** was live and misleading —
+wired to `toggleCrashReporting(_:)`, visibly shown, toggling a `CrashReporter.isEnabled`
+setter that is a no-op, so the checkbox could never actually turn on; the `@IBAction`,
+its `validateMenuItem` case, and the menu item are all gone too. `CrashReporter` itself
+is untouched — `SettingsModel` still reads/writes `CrashReporter.isEnabled` at three call
+sites, per the stub-don't-excise rule, since that state tracking outlived its own menu
+item once already (M3 removed the Privacy pane's crash-reporting toggle and left this
+menu item as the last surviving control). Removing both left exactly one separator
+between "About MDView" and "Services" — the stock macOS application-menu shape before
+either item was ever inserted.
 
 **B1 — Mermaid in Quick Look. Resolved as an upstream bug, not ours.** Fenced `mermaid`
 blocks render as raw text in a grey box in Quick Look, while syntax highlighting and the

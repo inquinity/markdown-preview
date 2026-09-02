@@ -73,8 +73,6 @@ private extension AppearanceMode {
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
-    @IBOutlet private weak var checkForUpdatesMenuItem: NSMenuItem?
-
     private var settingsWindowController: SettingsWindowController?
     /// Non-zero while `withCoalescedPreviewReloads` is holding reloads back.
     private var coalescedReloadDepth = 0
@@ -108,7 +106,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installFileExportMenuItems()
         installGoMenu()
         installSettingsMenuItem()
-        installAppMenuItemIcons()
         installViewMenuItemIcons()
     }
 
@@ -237,12 +234,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
-    }
-
-    @IBAction func toggleCrashReporting(_ sender: NSMenuItem) {
-        CrashReporter.isEnabled.toggle()
-        SettingsModel.shared.refreshFromExternalSources()
-        sender.state = CrashReporter.isEnabled ? .on : .off
     }
 
     // MARK: - Settings
@@ -462,9 +453,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return activeDocumentWindowController != nil
         case #selector(selectAppearanceMode(_:)),
              #selector(selectContentWidthSetting(_:)):
-            return true
-        case #selector(toggleCrashReporting(_:)):
-            menuItem.state = CrashReporter.isEnabled ? .on : .off
             return true
         case #selector(toggleEditModeFromMenu(_:)):
             return activeDocumentWindowController?.canToggleEditMode ?? false
@@ -1047,16 +1035,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard coalescedReloadDepth == 0, needsCoalescedPreviewReload else { return }
         needsCoalescedPreviewReload = false
         reloadDocumentPreviewsForSettingChange()
-    }
-
-    /// The MainMenu nib still carries a "Check for Updates..." item. Upstream
-    /// wires it to Sparkle here and inserts an "Install CLI..." item beside it;
-    /// this fork ships neither, so the item is removed from the menu rather than
-    /// left connected to nothing. The CLI item went with it because its
-    /// insertion was anchored on the updates item's index.
-    private func installAppMenuItemIcons() {
-        guard let updatesItem = checkForUpdatesMenuItem else { return }
-        updatesItem.menu?.removeItem(updatesItem)
     }
 
     private func installSidebarViewMenuItems() {
