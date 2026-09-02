@@ -179,6 +179,7 @@ Unscheduled — not part of the milestone sequence above, and not blocking M5. `
 | **F3** | Security-scoped bookmarks; drop the `/` read-only entitlement | |
 | **F4** | Click-to-load control for remote images in the app window, the way mail clients defer them | |
 | **F5** | Manual-test `.md` files need pass/fail criteria a human can read off the screen | See below |
+| **F6** | Multiple tabs, and separating a tab back out into its own window | Basic tab support already exists (`TabOpeningPolicy`, Settings → General → "Open documents in tabs", off by default) and standard AppKit tab tear-out should follow from it, but this has not been confirmed against what's actually wanted here — treat as unconfirmed, not done. |
 
 ### Deferred, with reasons
 
