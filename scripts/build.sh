@@ -3,10 +3,15 @@ set -euo pipefail
 
 # Build MDView locally for development and testing.
 #
-# Lighter-weight than scripts/build-release.sh: no archive, no DMG. Compiles
+# Lighter-weight than scripts/build-release.sh: no archive step -- compiles
 # with signing disabled, then signs it ourselves -- with the Developer ID
 # identity and notarization if those credentials are already in the keychain,
 # or an ad-hoc signature otherwise so the app still runs on this machine.
+#
+# --release additionally packages a signed, notarized DMG into ./dist, the
+# same artifact build-release.sh produces, but without its CHANGELOG.md
+# requirement -- for a quick distributable build rather than an official,
+# changelog-documented release.
 #
 # Source of truth: Version.xcconfig -> MARKETING_VERSION, CURRENT_PROJECT_VERSION
 
@@ -25,6 +30,7 @@ print_colored() {
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION_CONFIG="$PROJECT_ROOT/Version.xcconfig"
 OUTPUT_DIR="${OUTPUT_DIR:-$PROJECT_ROOT/build}"
+DIST_DIR="${DIST_DIR:-$PROJECT_ROOT/dist}"
 
 SCHEME="md-preview"
 APP_NAME="MDView"
@@ -36,6 +42,7 @@ SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Altman Software 
 NOTARY_PROFILE="${NOTARY_PROFILE:-altman-notary}"
 
 update_segment=""
+release_flag=false
 work_dir=""
 
 usage() {
@@ -48,6 +55,13 @@ usage() {
     printf '%s\n' '      --update SEGMENT    Bump the version before building.'
     printf '%s\n' '                          SEGMENT is major, minor, or revision.'
     printf '%s\n' '                          Also increments the build number.'
+    printf '%s\n' '      --release           Also package a signed, notarized disk'
+    printf '%s\n' '                          image into ./dist. Requires the signing'
+    printf '%s\n' '                          identity and notary profile below --'
+    printf '%s\n' '                          unlike a plain build, this does not fall'
+    printf '%s\n' '                          back to an ad-hoc signature. No'
+    printf '%s\n' '                          CHANGELOG.md entry is required, unlike'
+    printf '%s\n' '                          scripts/build-release.sh.'
     printf '\n'
     printf '%b\n' "${COLOR_YELLOW}Notarization:${COLOR_RESET}"
     printf '%s\n' '  Signs with the Developer ID identity and notarizes if both'
@@ -57,6 +71,7 @@ usage() {
     printf '\n'
     printf '%b\n' "${COLOR_YELLOW}Environment:${COLOR_RESET}"
     printf '%s\n' '  OUTPUT_DIR        Where the .app lands. Default: ./build'
+    printf '%s\n' '  DIST_DIR          Where --release puts the .dmg. Default: ./dist'
     printf '%s\n' '  SIGNING_IDENTITY  Developer ID Application identity.'
     printf '%s\n' '  NOTARY_PROFILE    notarytool keychain profile. Default: altman-notary'
 }
@@ -79,6 +94,7 @@ parse_arguments() {
             --update)
                 [[ $# -ge 2 ]] || die "missing value for $1"
                 update_segment="$2"; shift 2 ;;
+            --release) release_flag=true; shift ;;
             *) die "unknown option: $1" ;;
         esac
     done
@@ -152,6 +168,46 @@ sign_component() {
     codesign --force --sign "$identity" --entitlements "$entitlements" "$@" "$target_path"
 }
 
+# Wrap the built, Developer-ID-signed .app in a disk image for handing to
+# someone else. Mirrors scripts/build-release.sh's DMG steps -- starting from
+# the app this script already built rather than re-archiving, since there is
+# no separate release build to keep in sync.
+#
+# Reachable only under --release, whose validation already required a working
+# signing identity and notary profile. So unlike the app build above, this
+# does not fall back to an ad-hoc signature: a "release" DMG that cannot pass
+# Gatekeeper on another Mac is not one worth producing silently.
+package_dmg() {
+    local app_path=$1 version=$2
+    local staging_dir="$work_dir/dmg-staging"
+    local dmg_path="$DIST_DIR/$APP_NAME $version.dmg"
+
+    print_colored "$COLOR_BRIGHTYELLOW" "* Packaging a disk image"
+    mkdir -p "$staging_dir" "$DIST_DIR"
+    cp -R "$app_path" "$staging_dir/"
+    ln -s /Applications "$staging_dir/Applications"
+    rm -f "$dmg_path"
+    hdiutil create \
+        -volname "$APP_NAME" \
+        -srcfolder "$staging_dir" \
+        -ov -format UDZO \
+        "$dmg_path"
+
+    # hdiutil leaves the image unsigned, and `spctl -t open` then answers "no
+    # usable signature" however well notarized the app inside it is.
+    print_colored "$COLOR_BRIGHTYELLOW" "* Signing and notarizing the disk image"
+    codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$dmg_path"
+    xcrun notarytool submit "$dmg_path" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple "$dmg_path"
+
+    print_colored "$COLOR_BRIGHTYELLOW" "* Verifying as Gatekeeper would"
+    spctl -a -t open --context context:primary-signature -v "$dmg_path" \
+        || die "Gatekeeper assessment failed -- do not distribute this DMG"
+
+    print_colored "$COLOR_GREEN" "Done: $dmg_path"
+    print_colored "$COLOR_GREEN" "Verify on a second Mac before handing it out."
+}
+
 main() {
     parse_arguments "$@"
 
@@ -160,6 +216,16 @@ main() {
     [[ -f "$VERSION_CONFIG" ]] || die "missing $VERSION_CONFIG"
     [[ -f "$APP_ENTITLEMENTS" ]] || die "missing $APP_ENTITLEMENTS"
     [[ -f "$APPEX_ENTITLEMENTS" ]] || die "missing $APPEX_ENTITLEMENTS"
+
+    if [[ "$release_flag" == "true" ]]; then
+        require_command hdiutil
+        security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGNING_IDENTITY" \
+            || die "signing identity not found in the keychain: $SIGNING_IDENTITY"
+        xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 \
+            || die "notary profile '$NOTARY_PROFILE' is missing or cannot authenticate.
+       Create it with: xcrun notarytool store-credentials \"$NOTARY_PROFILE\" --team-id $DEVELOPMENT_TEAM
+       Or drop --release for a local, ad-hoc-signed build instead."
+    fi
 
     [[ -n "$update_segment" ]] && bump_version "$update_segment"
 
@@ -209,6 +275,9 @@ main() {
     fi
 
     print_colored "$COLOR_GREEN" "Done: $output_app"
+
+    [[ "$release_flag" == "true" ]] && package_dmg "$output_app" "$version"
+
     return 0
 }
 
