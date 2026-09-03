@@ -146,7 +146,7 @@ merged it stops being our diff to carry:
 | `md-asset:` scheme has no path containment (`MarkdownAssetResolution.swift:49`) | Advisory → PR | **accepted**; [GHSA-vgmc-h5g6-xh2q](https://github.com/pluk-inc/markdown-preview/security/advisories/GHSA-vgmc-h5g6-xh2q). Maintainer asked us to write the fix — [PR #337](https://github.com/pluk-inc/markdown-preview/pull/337) open, awaiting review |
 | Preview document has no Content-Security-Policy | Issue → PR | drafted, held pending upstream's response to the advisory |
 | `ALLOWED_URI_REGEXP` permits `http`/`https` | Issue → PR, after the CSP lands | pending |
-| Mermaid diagrams do not render in Quick Look, though `README.md` says they do | Issue | drafted, ready to file |
+| Mermaid diagrams do not render in Quick Look, though `README.md` says they do | Issue | **filed** — [#338](https://github.com/pluk-inc/markdown-preview/issues/338), against cask 0.0.51 |
 
 The `md-asset:` finding goes through GitHub's private vulnerability reporting (enabled
 on upstream), **not** a public issue: it describes an unfixed weakness in a shipping app
