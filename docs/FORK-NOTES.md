@@ -143,7 +143,7 @@ merged it stops being our diff to carry:
 
 | Finding | Form | Status |
 |---|---|---|
-| `md-asset:` scheme has no path containment (`MarkdownAssetResolution.swift:49`) | Private security advisory | **filed 2026-09-02** — [GHSA-vgmc-h5g6-xh2q](https://github.com/pluk-inc/markdown-preview/security/advisories/GHSA-vgmc-h5g6-xh2q), state `triage` |
+| `md-asset:` scheme has no path containment (`MarkdownAssetResolution.swift:49`) | Advisory → PR | **accepted**; [GHSA-vgmc-h5g6-xh2q](https://github.com/pluk-inc/markdown-preview/security/advisories/GHSA-vgmc-h5g6-xh2q). Maintainer asked us to write the fix — [PR #337](https://github.com/pluk-inc/markdown-preview/pull/337) open, awaiting review |
 | Preview document has no Content-Security-Policy | Issue → PR | drafted, held pending upstream's response to the advisory |
 | `ALLOWED_URI_REGEXP` permits `http`/`https` | Issue → PR, after the CSP lands | pending |
 | Mermaid diagrams do not render in Quick Look, though `README.md` says they do | Issue | drafted, ready to file |
@@ -164,7 +164,7 @@ Those are product decisions, not defects, and filing them would be noise.
 | **M2** | Identity & release | Team ID, four bundle IDs, app group, display names; replace the Amore release pipeline; rewrite `CLAUDE.md` / `AGENTS.md` | ✅ done |
 | **M3** | Deprivileging | Stub Sentry + PostHog; excise Sparkle; orphan CLI installer; collapse Privacy pane; drop `network.client` and test Quick Look | ✅ done |
 | **M3b** | *Conditional* | Quick Look CSP — the extension does need `network.client`, so the page blocks remote content instead | ✅ done |
-| **M4** | Containment | `md-asset:` confinement — **skipped entirely if upstream accepts the M1 advisory** | pending |
+| **M4** | Containment | `md-asset:` confinement — written and submitted upstream as [PR #337](https://github.com/pluk-inc/markdown-preview/pull/337); arrives here on the next `git merge upstream/main` once merged | **waiting on upstream** — see below |
 | **M2b** | Rebranding | Replace the app icon | ✅ done — placeholder, regenerate with `scripts/make-icon.swift` |
 | **M5** | Distribution | Notarize (✅ `dist/MDView 1.0.0.dmg`), verify on a second Mac (✅ passed), ship via corporate share or Dropbox (pending — the user's own action, not tool-driven) | **in progress** — one step left |
 
@@ -244,6 +244,31 @@ answer there is the one mail clients settled on: don't load remote content, show
 offering to. Deferred because it needs UI, a per-document decision, and somewhere to
 remember it — it is a feature, not a security prerequisite. F2 (a blanket CSP for that
 page) is the cruder version that could land first.
+
+**M4 — `md-asset:` containment: written, submitted upstream, deliberately not carried here
+yet.** The fix exists as [PR #337](https://github.com/pluk-inc/markdown-preview/pull/337)
+against upstream, not on this fork's `main`. So the shipped MDView build still resolves
+`md-asset:` paths without a containment check, and a document could name any file the
+user can read.
+
+**This is a considered decision, not an oversight.** The maintainer accepted the advisory
+and asked us to write the fix; the tidiest outcome is inheriting it through a normal
+`git merge upstream/main` with zero fork-local diff, rather than carrying a patch that
+later has to be reconciled with whatever shape upstream merges. The risk of waiting was
+judged acceptable because this build is used to read documents its own user authored —
+the exposure needs untrusted Markdown, and there isn't any.
+
+Two things that would change the calculus, and should prompt cherry-picking the commit
+onto `main` instead of waiting:
+
+- The build gets handed to people who will open Markdown they did not write — the
+  original M5 "ship to colleagues" case, or anything wider.
+- Upstream goes quiet for long enough that "waiting" stops being a plan.
+
+Note that the exfiltration half is already closed here regardless: `PreviewContentPolicy`
+and `QuickLookContentPolicy` stop a document sending anything anywhere, so a read cannot
+be turned into a leak by the document that caused it. What remains unfixed on this fork
+is the read itself.
 
 **F5 — manual-test `.md` files don't say what "pass" looks like.** Every fixture written
 for this fork (`tests/fixtures/security/*.md`, `tests/fixtures/relative-assets/*.md`) and
