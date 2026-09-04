@@ -146,7 +146,7 @@ merged it stops being our diff to carry:
 | `md-asset:` scheme has no path containment (`MarkdownAssetResolution.swift:49`) | Advisory → PR | **accepted**; [GHSA-vgmc-h5g6-xh2q](https://github.com/pluk-inc/markdown-preview/security/advisories/GHSA-vgmc-h5g6-xh2q). Maintainer asked us to write the fix — [PR #337](https://github.com/pluk-inc/markdown-preview/pull/337) open, awaiting review |
 | Preview document has no Content-Security-Policy | Issue → PR | **filed** — [#339](https://github.com/pluk-inc/markdown-preview/issues/339), with both working policies and an offer to PR |
 | `ALLOWED_URI_REGEXP` permits `http`/`https` | Issue → PR, after the CSP lands | pending |
-| Mermaid diagrams do not render in Quick Look, though `README.md` says they do | Issue | **filed** — [#338](https://github.com/pluk-inc/markdown-preview/issues/338), against cask 0.0.51 |
+| Mermaid diagrams do not render in Quick Look, though `README.md` says they do | Issue | **filed** — [#338](https://github.com/pluk-inc/markdown-preview/issues/338), against cask 0.0.51. Root cause since found and fixed in this fork (see B1); the issue still describes only the symptom |
 
 The `md-asset:` finding goes through GitHub's private vulnerability reporting (enabled
 on upstream), **not** a public issue: it describes an unfixed weakness in a shipping app
@@ -170,7 +170,7 @@ Those are product decisions, not defects, and filing them would be noise.
 
 ## Backlog
 
-Unscheduled — not part of the milestone sequence above, and not blocking M5. `B1` (Mermaid in Quick Look) isn't listed here: it's an upstream bug, tracked in the Upstream contribution track table above rather than duplicated.
+Unscheduled — not part of the milestone sequence above, and not blocking M5. `B1` (Mermaid in Quick Look) isn't listed here: it's an upstream bug — fixed in this fork, and tracked in the Upstream contribution track table above rather than duplicated.
 
 | # | Item | Notes |
 |---|---|---|
@@ -277,10 +277,11 @@ feature to a *developer*, but none of them tell a *person looking at the rendere
 how to tell a pass from a failure. Concretely: opening `inline-html.md` and eyeballing it
 gives no way to confirm the credential-harvesting section was actually blocked — the
 automated `SanitizerNegativeTests` can tell, a person reading the page cannot. Same
-problem the other direction: `samples/codeblocks.md`'s Mermaid block is *expected* to
-fail in Quick Look (B1, upstream's bug) and *expected* to work in the app window, and
-nothing on the page says so — a tester has no way to distinguish "known, acceptable" from
-"newly broken."
+problem the other direction: a tester has no way to distinguish "known, acceptable" from
+"newly broken." Note that the standing example for this — `samples/codeblocks.md`'s
+Mermaid block being expected to fail in Quick Look — **is no longer true**: B1 is fixed,
+and that diagram is now expected to render in both surfaces. A failure there is a
+regression, not a known limitation.
 
 Scope, per the user: all three locations — security fixtures, asset fixtures, and
 upstream's samples.
@@ -329,36 +330,79 @@ menu item as the last surviving control). Removing both left exactly one separat
 between "About MDView" and "Services" — the stock macOS application-menu shape before
 either item was ever inserted.
 
-**B1 — Mermaid in Quick Look. Resolved as an upstream bug, not ours.** Fenced `mermaid`
-blocks render as raw text in a grey box in Quick Look, while syntax highlighting and the
-copy button work. Confirmed on a **stock Homebrew install of upstream**, with our
-extension disabled via `pluginkit -e ignore` so the baseline was honest. Upstream's
-`README.md` says diagrams "render as diagrams in both the app and Quick Look previews",
-and the CHANGELOG carries several Mermaid-in-Quick-Look entries, so the documentation is
-wrong or the feature regressed there.
+**B1 — Mermaid in Quick Look. Root cause found and fixed in this fork.** Fenced
+`mermaid` blocks rendered as raw text in a grey box in Quick Look while syntax
+highlighting and the copy button worked. Reproduced on a **stock Homebrew install of
+upstream**, so it is upstream's bug — but the cause is now known and fixed here.
 
-Two false leads worth recording, because both cost time:
+**The cause.** `addingCopyButtonClearance` spliced its CSS in at the *last* `</head>` in
+the document:
 
-- **The CSP was suspected first.** An A/B build with `QuickLookContentPolicy` disabled
-  reproduced the failure exactly, clearing it.
-- **A local reproduction was attempted in the SPM test harness and is not possible.**
+```swift
+// Vendor scripts can contain `</head>` as data. The document's real
+// closing tag is the final occurrence in MarkdownHTML's output.
+guard let headEnd = html.range(of: "</head>", options: .backwards) else { return html }
+```
+
+The comment anticipates the exact hazard and then gets it backwards. The real `</head>`
+is near the top of the document; inlined vendor bundles sit in `<body>`, *after* it. So
+with a diagram on the page the last `</head>` is the one inside Mermaid's bundled copy of
+DOMPurify, in the middle of this single-quoted string:
+
+```js
+Ie = '<html xmlns="..."><head></head><body>' + Ie + "</body></html>"
+```
+
+A single-quoted JavaScript string cannot span newlines. The multi-line CSS ended the
+literal mid-line, and the parser ran to the end of a 3.18 MB file hunting for a closing
+quote — `SyntaxError: Unexpected EOF`, the entire bundle dead before its first statement.
+
+**Two failures from one splice.** The diagrams never rendered, *and* the clearance CSS
+never reached the document, so whenever a diagram was present the floating copy button
+had no clearance at all. The second one had gone unnoticed.
+
+**Why it looked Mermaid-specific.** `purify.min.js` is inlined in `<head>` and contains
+`</head>` as data too — but *before* the real tag. With no diagram on the page the last
+occurrence really is the document's own and everything behaves, which is why the bug only
+ever appeared alongside a diagram. Neither the first nor the last occurrence is reliably
+the document's: vendor bundles carry that string on both sides of it.
+
+**Why it took so long to see.** The preview loads with `baseURL: nil`, giving the page an
+opaque origin, and WebKit mutes script errors from opaque origins to a bare
+`"Script error."` with no message, line, or stack. The real `SyntaxError` was invisible
+for the whole investigation. Pointing a diagnostic build at a real origin surfaced it
+immediately — worth remembering the next time this page fails silently.
+
+**The fix.** Anchor to the *opening* `<head>` instead, which is unambiguous — it is the
+first one in the document, ahead of any script. That places the rule before the main
+stylesheet rather than after it, so the selector is `html body`, whose specificity wins
+regardless of cascade position. The logic moved to `quick-look/CopyButtonClearance.swift`
+(a new file, so no upstream-merge rent) and is covered by
+`CopyButtonClearanceTests`, whose central assertion is that **no `<script>` content is
+modified**. Mutation-tested: restoring the `.backwards` lookup fails that test.
+
+Hypotheses ruled out along the way, each by direct measurement inside the live Quick Look
+webview — recorded because every one of them is plausible enough to be re-tried:
+
+- **Bundle size / a 3 MB inline-script limit.** Bracketed with padded copies of the real
+  bundle: a **3,185,423**-character script of real code compiles and runs, while the
+  failing block is **3,181,544**. Larger works, smaller fails; size is not the variable.
+- **Strict mode.** The bundle opens with its own `"use strict"`. Inlined first in a
+  script, directive intact, it runs fine.
+- **`IntersectionObserver` gating, async render, or Quick Look tearing the extension down
+  before the render completes** — the prior leading hypothesis in this document. The
+  script never executed at all; nothing was ever racing.
+- **Document position.** Moving the emission to the end of `<body>` was tried as a fix and
+  verified *not* to work — the reorder is not in the tree.
+- **The CSP**, cleared earlier by an A/B build with `QuickLookContentPolicy` disabled.
+- **A local reproduction in the SPM harness**, which is not possible:
   `bundledVendorScriptTag` reads from `Bundle.main`, which in an SPM test has no vendor
-  resources, so the harness produced a page with no Mermaid in it at all and reported
-  zero CSP violations. That looked like evidence and was not.
+  resources, so the harness produced a page with no Mermaid in it and reported zero CSP
+  violations. That looked like evidence and was not.
 
-Also ruled out: Mermaid is present in the appex, and uses no `eval`, `Function`, workers,
-blob URLs or dynamic `import()`. Quick Look renders with `vendorLoading: .inline`, so the
-bundle is inlined rather than fetched over a scheme that could fail.
-
-**Confirmed asymmetric on upstream: diagrams render in their app window and fail in their
-Quick Look.** That isolates it to the Quick Look path rather than to Mermaid or the
-renderer.
-
-The leading hypothesis: Mermaid is a 3 MB bundle that renders asynchronously. The app
-window has as long as it needs; a Quick Look preview may be snapshotted, or the extension
-torn down, before the render completes. That fits the symptom — the figure container is
-emitted, the SVG never replaces it — and is consistent with KaTeX and highlight.js
-working in Quick Look, both being far smaller and finishing sooner.
+The upstream issue ([#338](https://github.com/pluk-inc/markdown-preview/issues/338)) was
+filed before the cause was known and still describes only the symptom; it deserves the
+root cause and a patch.
 
 **F3 — the `/` read-only entitlement.** Both targets carry
 `com.apple.security.temporary-exception.files.absolute-path.read-only` = `/`. There is no
