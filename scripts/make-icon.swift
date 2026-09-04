@@ -1,57 +1,449 @@
 import AppKit
+import Foundation
 
-// Draws a placeholder app-icon layer for the fork: a rounded document mark with
-// a bold downward chevron (the Markdown convention), on transparency so Icon
-// Composer supplies the background gradient and glass treatment itself.
+// Generates both selected app-icon families from deterministic AppKit paths.
+// The production app uses MDView / Split Signal; Rendered Fold remains the
+// public markdown-preview artwork. Run from the repository root:
+//
+//   swift scripts/make-icon.swift
+//   swift scripts/make-icon.swift --install-mdview
 
-let side = 1024
-let scale = CGFloat(side) / 1024.0
+enum IconDesign: String, CaseIterable {
+    case renderedFold = "rendered-fold"
+    case splitSignal = "mdview"
 
-guard let context = CGContext(
-    data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
-    space: CGColorSpace(name: CGColorSpace.sRGB)!,
-    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-) else { fatalError("context") }
+    var displayName: String {
+        switch self {
+        case .renderedFold: "Rendered Fold"
+        case .splitSignal: "Split Signal"
+        }
+    }
+}
 
-NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+struct Options {
+    var outputRoot = "artwork/app-icons"
+    var installMDView = false
+}
 
-// Warm amber — deliberately far from upstream's palette and from the blue-grey
-// of macOS Preview, which is the pair being confused in the Dock.
-let ink = NSColor(srgbRed: 0.94, green: 0.62, blue: 0.16, alpha: 1.0)
-let deep = NSColor(srgbRed: 0.55, green: 0.31, blue: 0.04, alpha: 1.0)
+func parseOptions() -> Options {
+    var options = Options()
+    var arguments = Array(CommandLine.arguments.dropFirst())
 
-// Rounded page
-let pageRect = NSRect(x: 232 * scale, y: 196 * scale, width: 560 * scale, height: 632 * scale)
-let page = NSBezierPath(roundedRect: pageRect, xRadius: 84 * scale, yRadius: 84 * scale)
-ink.setFill()
-page.fill()
+    while !arguments.isEmpty {
+        let argument = arguments.removeFirst()
+        switch argument {
+        case "--install-mdview":
+            options.installMDView = true
+        case "--output-root":
+            guard !arguments.isEmpty else {
+                fatalError("--output-root requires a path")
+            }
+            options.outputRoot = arguments.removeFirst()
+        case "--help", "-h":
+            print("Usage: swift scripts/make-icon.swift [--output-root PATH] [--install-mdview]")
+            exit(0)
+        default:
+            fatalError("Unknown argument: \(argument)")
+        }
+    }
 
-// Chevron: a thick stroked V, the Markdown down-arrow reduced to its essential.
-let chevron = NSBezierPath()
-chevron.move(to: NSPoint(x: 388 * scale, y: 566 * scale))
-chevron.line(to: NSPoint(x: 512 * scale, y: 428 * scale))
-chevron.line(to: NSPoint(x: 636 * scale, y: 566 * scale))
-chevron.lineWidth = 74 * scale
-chevron.lineCapStyle = .round
-chevron.lineJoinStyle = .round
-deep.setStroke()
-chevron.stroke()
+    return options
+}
 
-// Stem under the chevron, so the mark reads as "down" rather than as a caret.
-let stem = NSBezierPath()
-stem.move(to: NSPoint(x: 512 * scale, y: 428 * scale))
-stem.line(to: NSPoint(x: 512 * scale, y: 640 * scale))
-stem.lineWidth = 74 * scale
-stem.lineCapStyle = .round
-deep.setStroke()
-stem.stroke()
+func color(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat, _ alpha: CGFloat = 1) -> NSColor {
+    NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha)
+}
 
-NSGraphicsContext.current = nil
+func makeContext(side: Int) -> CGContext {
+    guard let context = CGContext(
+        data: nil,
+        width: side,
+        height: side,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else {
+        fatalError("Unable to create \(side) × \(side) bitmap context")
+    }
 
-guard let image = context.makeImage() else { fatalError("image") }
-let rep = NSBitmapImageRep(cgImage: image)
-guard let png = rep.representation(using: .png, properties: [:]) else { fatalError("png") }
+    context.interpolationQuality = .high
+    context.setShouldAntialias(true)
+    context.setAllowsAntialiasing(true)
+    context.scaleBy(x: CGFloat(side) / 1024, y: CGFloat(side) / 1024)
+    return context
+}
 
-let out = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "icon.png"
-try! png.write(to: URL(fileURLWithPath: out))
-print("wrote \(out) (\(side)x\(side))")
+func withGraphicsContext(_ context: CGContext, draw: () -> Void) {
+    let previous = NSGraphicsContext.current
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+    draw()
+    NSGraphicsContext.current = previous
+}
+
+func fill(
+    _ path: NSBezierPath,
+    colors: [NSColor],
+    angle: CGFloat = 90,
+    shadow: Bool = false
+) {
+    NSGraphicsContext.saveGraphicsState()
+
+    if shadow {
+        let iconShadow = NSShadow()
+        iconShadow.shadowColor = NSColor.black.withAlphaComponent(0.32)
+        iconShadow.shadowOffset = NSSize(width: 0, height: -18)
+        iconShadow.shadowBlurRadius = 24
+        iconShadow.set()
+    }
+
+    guard let gradient = NSGradient(colors: colors) else {
+        fatalError("Unable to create gradient")
+    }
+    gradient.draw(in: path, angle: angle)
+    NSGraphicsContext.restoreGraphicsState()
+}
+
+func splitSignalSeam() -> NSBezierPath {
+    let path = NSBezierPath()
+    path.move(to: NSPoint(x: 570, y: 770))
+    path.curve(to: NSPoint(x: 625, y: 735), controlPoint1: NSPoint(x: 595, y: 770), controlPoint2: NSPoint(x: 620, y: 758))
+    path.line(to: NSPoint(x: 510, y: 245))
+    path.curve(to: NSPoint(x: 455, y: 205), controlPoint1: NSPoint(x: 502, y: 218), controlPoint2: NSPoint(x: 480, y: 205))
+    path.line(to: NSPoint(x: 440, y: 205))
+    path.line(to: NSPoint(x: 570, y: 770))
+    path.close()
+    return path
+}
+
+func splitSignalLeftPanel() -> NSBezierPath {
+    let path = NSBezierPath()
+    path.move(to: NSPoint(x: 290, y: 760))
+    path.line(to: NSPoint(x: 535, y: 760))
+    path.curve(to: NSPoint(x: 587, y: 695), controlPoint1: NSPoint(x: 575, y: 760), controlPoint2: NSPoint(x: 597, y: 730))
+    path.line(to: NSPoint(x: 478, y: 258))
+    path.curve(to: NSPoint(x: 420, y: 200), controlPoint1: NSPoint(x: 470, y: 224), controlPoint2: NSPoint(x: 447, y: 200))
+    path.line(to: NSPoint(x: 322, y: 200))
+    path.curve(to: NSPoint(x: 195, y: 330), controlPoint1: NSPoint(x: 247, y: 200), controlPoint2: NSPoint(x: 195, y: 254))
+    path.line(to: NSPoint(x: 195, y: 668))
+    path.curve(to: NSPoint(x: 290, y: 760), controlPoint1: NSPoint(x: 195, y: 724), controlPoint2: NSPoint(x: 232, y: 760))
+    path.close()
+    return path
+}
+
+func splitSignalRightPanel() -> NSBezierPath {
+    let path = NSBezierPath()
+    path.move(to: NSPoint(x: 665, y: 760))
+    path.line(to: NSPoint(x: 770, y: 760))
+    path.curve(to: NSPoint(x: 862, y: 664), controlPoint1: NSPoint(x: 829, y: 760), controlPoint2: NSPoint(x: 862, y: 722))
+    path.line(to: NSPoint(x: 862, y: 304))
+    path.curve(to: NSPoint(x: 764, y: 200), controlPoint1: NSPoint(x: 862, y: 238), controlPoint2: NSPoint(x: 827, y: 200))
+    path.line(to: NSPoint(x: 556, y: 200))
+    path.curve(to: NSPoint(x: 500, y: 267), controlPoint1: NSPoint(x: 516, y: 200), controlPoint2: NSPoint(x: 490, y: 232))
+    path.line(to: NSPoint(x: 616, y: 714))
+    path.curve(to: NSPoint(x: 665, y: 760), controlPoint1: NSPoint(x: 623, y: 742), controlPoint2: NSPoint(x: 641, y: 760))
+    path.close()
+    return path
+}
+
+func drawSplitSignal(shadow: Bool, context: CGContext) {
+    let ivoryTop = color(1.00, 0.98, 0.91)
+    let ivoryBottom = color(0.89, 0.84, 0.73)
+    let goldTop = color(1.00, 0.78, 0.16)
+    let goldBottom = color(0.89, 0.52, 0.03)
+
+    fill(splitSignalSeam(), colors: [goldTop, goldBottom], angle: 80, shadow: shadow)
+
+    let leftPanel = splitSignalLeftPanel()
+    fill(leftPanel, colors: [ivoryTop, ivoryBottom], angle: 90, shadow: shadow)
+
+    context.saveGState()
+    context.setBlendMode(.clear)
+    let grooves = [
+        NSBezierPath(roundedRect: NSRect(x: 254, y: 585, width: 238, height: 56), xRadius: 28, yRadius: 28),
+        NSBezierPath(roundedRect: NSRect(x: 254, y: 466, width: 205, height: 56), xRadius: 28, yRadius: 28),
+        NSBezierPath(roundedRect: NSRect(x: 254, y: 347, width: 166, height: 56), xRadius: 28, yRadius: 28),
+    ]
+    grooves.forEach { $0.fill() }
+    context.restoreGState()
+
+    fill(splitSignalRightPanel(), colors: [ivoryTop, ivoryBottom], angle: 90, shadow: shadow)
+}
+
+func renderedFoldSurface() -> NSBezierPath {
+    let path = NSBezierPath()
+    path.move(to: NSPoint(x: 575, y: 612))
+    path.line(to: NSPoint(x: 808, y: 756))
+    path.curve(to: NSPoint(x: 858, y: 711), controlPoint1: NSPoint(x: 833, y: 772), controlPoint2: NSPoint(x: 858, y: 746))
+    path.line(to: NSPoint(x: 858, y: 329))
+    path.curve(to: NSPoint(x: 824, y: 282), controlPoint1: NSPoint(x: 858, y: 307), controlPoint2: NSPoint(x: 846, y: 291))
+    path.line(to: NSPoint(x: 624, y: 184))
+    path.curve(to: NSPoint(x: 565, y: 228), controlPoint1: NSPoint(x: 594, y: 169), controlPoint2: NSPoint(x: 565, y: 191))
+    path.line(to: NSPoint(x: 565, y: 562))
+    path.curve(to: NSPoint(x: 575, y: 612), controlPoint1: NSPoint(x: 565, y: 584), controlPoint2: NSPoint(x: 568, y: 600))
+    path.close()
+    return path
+}
+
+func renderedFoldRibbon(y: CGFloat, endY: CGFloat, width: CGFloat) -> NSBezierPath {
+    let half = width / 2
+    let path = NSBezierPath()
+    path.move(to: NSPoint(x: 170, y: y + half))
+    path.line(to: NSPoint(x: 430, y: y + half))
+    path.curve(to: NSPoint(x: 560, y: endY + half * 0.25), controlPoint1: NSPoint(x: 500, y: y + half), controlPoint2: NSPoint(x: 536, y: endY + half))
+    path.line(to: NSPoint(x: 590, y: endY - half * 0.25))
+    path.curve(to: NSPoint(x: 430, y: y - half), controlPoint1: NSPoint(x: 542, y: endY - half), controlPoint2: NSPoint(x: 500, y: y - half))
+    path.line(to: NSPoint(x: 170, y: y - half))
+    path.curve(to: NSPoint(x: 125, y: y), controlPoint1: NSPoint(x: 145, y: y - half), controlPoint2: NSPoint(x: 125, y: y - 25))
+    path.curve(to: NSPoint(x: 170, y: y + half), controlPoint1: NSPoint(x: 125, y: y + 25), controlPoint2: NSPoint(x: 145, y: y + half))
+    path.close()
+    return path
+}
+
+func drawRenderedFold(shadow: Bool) {
+    let coralTop = color(1.00, 0.53, 0.38)
+    let coralBottom = color(0.94, 0.16, 0.27)
+
+    let ribbons = [
+        renderedFoldRibbon(y: 654, endY: 570, width: 86),
+        renderedFoldRibbon(y: 487, endY: 430, width: 86),
+        renderedFoldRibbon(y: 320, endY: 265, width: 86),
+    ]
+    ribbons.forEach { fill($0, colors: [coralTop, coralBottom], angle: 90, shadow: shadow) }
+    fill(renderedFoldSurface(), colors: [coralTop, coralBottom], angle: 90, shadow: shadow)
+
+    let foldHighlight = NSBezierPath()
+    foldHighlight.move(to: NSPoint(x: 485, y: 690))
+    foldHighlight.curve(to: NSPoint(x: 566, y: 575), controlPoint1: NSPoint(x: 536, y: 681), controlPoint2: NSPoint(x: 560, y: 625))
+    foldHighlight.curve(to: NSPoint(x: 584, y: 532), controlPoint1: NSPoint(x: 570, y: 556), controlPoint2: NSPoint(x: 578, y: 540))
+    foldHighlight.curve(to: NSPoint(x: 552, y: 594), controlPoint1: NSPoint(x: 571, y: 558), controlPoint2: NSPoint(x: 560, y: 581))
+    foldHighlight.curve(to: NSPoint(x: 485, y: 690), controlPoint1: NSPoint(x: 535, y: 635), controlPoint2: NSPoint(x: 514, y: 674))
+    foldHighlight.close()
+    color(1.00, 0.77, 0.64, 0.68).setFill()
+    foldHighlight.fill()
+}
+
+func renderMark(_ design: IconDesign, side: Int, shadow: Bool) -> CGImage {
+    let context = makeContext(side: side)
+    withGraphicsContext(context) {
+        switch design {
+        case .renderedFold:
+            drawRenderedFold(shadow: shadow)
+        case .splitSignal:
+            drawSplitSignal(shadow: shadow, context: context)
+        }
+    }
+
+    guard let image = context.makeImage() else {
+        fatalError("Unable to create \(design.displayName) mark")
+    }
+    return image
+}
+
+func drawBackground(_ design: IconDesign) {
+    let iconShape = NSBezierPath(
+        roundedRect: NSRect(x: 28, y: 28, width: 968, height: 968),
+        xRadius: 220,
+        yRadius: 220
+    )
+
+    let colors: [NSColor]
+    switch design {
+    case .renderedFold:
+        colors = [color(0.31, 0.08, 0.34), color(0.13, 0.02, 0.15)]
+    case .splitSignal:
+        colors = [color(0.08, 0.48, 0.27), color(0.02, 0.27, 0.16)]
+    }
+    fill(iconShape, colors: colors, angle: 90)
+
+    NSGraphicsContext.saveGraphicsState()
+    iconShape.addClip()
+    let highlight = NSBezierPath()
+    highlight.move(to: NSPoint(x: 0, y: 760))
+    highlight.line(to: NSPoint(x: 1024, y: 1024))
+    highlight.line(to: NSPoint(x: 1024, y: 820))
+    highlight.line(to: NSPoint(x: 0, y: 555))
+    highlight.close()
+    NSColor.white.withAlphaComponent(0.055).setFill()
+    highlight.fill()
+    NSGraphicsContext.restoreGraphicsState()
+}
+
+func renderFullIcon(_ design: IconDesign, side: Int) -> CGImage {
+    let context = makeContext(side: side)
+    withGraphicsContext(context) {
+        drawBackground(design)
+    }
+
+    let mark = renderMark(design, side: side, shadow: true)
+    context.draw(mark, in: CGRect(x: 0, y: 0, width: 1024, height: 1024))
+
+    guard let image = context.makeImage() else {
+        fatalError("Unable to create \(design.displayName) icon")
+    }
+    return image
+}
+
+func writePNG(_ image: CGImage, to url: URL) throws {
+    let representation = NSBitmapImageRep(cgImage: image)
+    guard let data = representation.representation(using: .png, properties: [:]) else {
+        fatalError("Unable to encode \(url.lastPathComponent)")
+    }
+    try data.write(to: url, options: .atomic)
+}
+
+func iconComposerManifest(for design: IconDesign) -> Data {
+    let gradient: (top: String, bottom: String)
+    switch design {
+    case .renderedFold:
+        gradient = (
+            "srgb:0.31000,0.08000,0.34000,1.00000",
+            "srgb:0.13000,0.02000,0.15000,1.00000"
+        )
+    case .splitSignal:
+        gradient = (
+            "srgb:0.08000,0.48000,0.27000,1.00000",
+            "srgb:0.02000,0.27000,0.16000,1.00000"
+        )
+    }
+
+    let manifest = """
+    {
+      "fill" : {
+        "linear-gradient" : [
+          "\(gradient.top)",
+          "\(gradient.bottom)"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      },
+      "groups" : [
+        {
+          "layers" : [
+            {
+              "glass" : false,
+              "image-name" : "AppIconLayer.png",
+              "name" : "\(design.displayName)",
+              "position" : {
+                "scale" : 1,
+                "translation-in-points" : [
+                  0,
+                  0
+                ]
+              }
+            }
+          ],
+          "shadow" : {
+            "kind" : "neutral",
+            "opacity" : 0.45
+          },
+          "translucency" : {
+            "enabled" : true,
+            "value" : 0.15
+          }
+        }
+      ],
+      "supported-platforms" : {
+        "circles" : [
+          "watchOS"
+        ],
+        "squares" : "shared"
+      }
+    }
+
+    """
+    return Data(manifest.utf8)
+}
+
+func generate(_ design: IconDesign, root: URL) throws {
+    let fileManager = FileManager.default
+    let designRoot = root.appendingPathComponent(design.rawValue, isDirectory: true)
+    let layerDirectory = designRoot.appendingPathComponent("AppIcon.icon/Assets", isDirectory: true)
+    let iconsetDirectory = designRoot.appendingPathComponent("AppIcon.iconset", isDirectory: true)
+    try fileManager.createDirectory(at: layerDirectory, withIntermediateDirectories: true)
+    try fileManager.createDirectory(at: iconsetDirectory, withIntermediateDirectories: true)
+
+    try iconComposerManifest(for: design).write(
+        to: designRoot.appendingPathComponent("AppIcon.icon/icon.json"),
+        options: .atomic
+    )
+
+    try writePNG(
+        renderMark(design, side: 1024, shadow: false),
+        to: layerDirectory.appendingPathComponent("AppIconLayer.png")
+    )
+    try writePNG(
+        renderFullIcon(design, side: 1024),
+        to: designRoot.appendingPathComponent("preview-1024.png")
+    )
+
+    let iconsetFiles: [(String, Int)] = [
+        ("icon_16x16.png", 16),
+        ("icon_16x16@2x.png", 32),
+        ("icon_32x32.png", 32),
+        ("icon_32x32@2x.png", 64),
+        ("icon_128x128.png", 128),
+        ("icon_128x128@2x.png", 256),
+        ("icon_256x256.png", 256),
+        ("icon_256x256@2x.png", 512),
+        ("icon_512x512.png", 512),
+        ("icon_512x512@2x.png", 1024),
+    ]
+
+    for (filename, side) in iconsetFiles {
+        try writePNG(
+            renderFullIcon(design, side: side),
+            to: iconsetDirectory.appendingPathComponent(filename)
+        )
+    }
+
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
+    process.arguments = [
+        "--convert", "icns",
+        "--output", designRoot.appendingPathComponent("AppIcon.icns").path,
+        iconsetDirectory.path,
+    ]
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        fatalError("iconutil failed for \(design.displayName)")
+    }
+
+    print("generated \(design.displayName) in \(designRoot.path)")
+}
+
+let options = parseOptions()
+let repositoryRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+let outputRoot = URL(fileURLWithPath: options.outputRoot, relativeTo: repositoryRoot).standardizedFileURL
+
+do {
+    for design in IconDesign.allCases {
+        try generate(design, root: outputRoot)
+    }
+
+    if options.installMDView {
+        let generatedPackage = outputRoot
+            .appendingPathComponent(IconDesign.splitSignal.rawValue)
+            .appendingPathComponent("AppIcon.icon")
+        let installedPackage = repositoryRoot.appendingPathComponent("md-preview/AppIcon.icon")
+        let packageFiles = ["icon.json", "Assets/AppIconLayer.png"]
+        for relativePath in packageFiles {
+            let source = generatedPackage.appendingPathComponent(relativePath)
+            let destination = installedPackage.appendingPathComponent(relativePath)
+            try Data(contentsOf: source).write(to: destination, options: .atomic)
+        }
+        print("installed Split Signal package at \(installedPackage.path)")
+    }
+} catch {
+    fputs("icon generation failed: \(error)\n", stderr)
+    exit(1)
+}

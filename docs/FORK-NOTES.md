@@ -165,7 +165,7 @@ Those are product decisions, not defects, and filing them would be noise.
 | **M3** | Deprivileging | Stub Sentry + PostHog; excise Sparkle; orphan CLI installer; collapse Privacy pane; drop `network.client` and test Quick Look | ✅ done |
 | **M3b** | *Conditional* | Quick Look CSP — the extension does need `network.client`, so the page blocks remote content instead | ✅ done |
 | **M4** | Containment | `md-asset:` confinement — written and submitted upstream as [PR #337](https://github.com/pluk-inc/markdown-preview/pull/337); arrives here on the next `git merge upstream/main` once merged | **waiting on upstream** — see below |
-| **M2b** | Rebranding | Replace the app icon | ✅ done — placeholder, regenerate with `scripts/make-icon.swift` |
+| **M2b** | Rebranding | Replace the app icon | ✅ done — Split Signal, regenerate with `swift scripts/make-icon.swift --install-mdview` |
 | **M5** | Distribution | Notarize (✅ `dist/MDView 1.0.0.dmg`), verify on a second Mac (✅ passed), ship via corporate share or Dropbox (pending — the user's own action, not tool-driven) | **in progress** — one step left |
 
 ## Backlog
@@ -180,7 +180,7 @@ Unscheduled — not part of the milestone sequence above, and not blocking M5. `
 | **F4** | Click-to-load control for remote images in the app window, the way mail clients defer them | |
 | **F5** | Manual-test `.md` files need pass/fail criteria a human can read off the screen | See below |
 | **F7** | Application menu still said "Markdown Preview" | ✅ done — see below. Its two adjacent findings ("Check for Updates…", "Send Anonymous Crash Reports") are also resolved — both removed from the menu on request, see below. |
-| **F8** | Pick a final product name and icon | Both current ones are explicitly provisional: `MDView` was a quick pick to stop the Dock collision with upstream, and the icon (`scripts/make-icon.swift`) was called a placeholder when it shipped. Whatever gets decided needs to land in `Localizable.strings` *and* `MainMenu.strings` (see F7) *and* `AppIcon.icon`, not just one of them. |
+| **F8** | Pick a final product name and icon | Icon selected: Split Signal (concept 2), now generated reproducibly and wired into `AppIcon.icon`. `MDView` remains the current private-variant name; any future rename still needs to land in `Localizable.strings` and `MainMenu.strings` (see F7). |
 
 ### Deferred, with reasons
 
@@ -209,20 +209,20 @@ Diagrams were not part of that check — Mermaid was separately found not to ren
 Quick Look at all (B1, an upstream bug), and its status in the app window under this CSP
 has not been explicitly confirmed either way.
 
-**M2b — the app icon. Done, with a placeholder.** The fork shipped upstream's icon, so two
+**M2b — the app icon. Done, with Split Signal.** The fork shipped upstream's icon, so two
 identically named and identically iconed apps sat in the Dock — and upstream has an open
 issue that their icon is too close to macOS Preview's.
 
 `md-preview/AppIcon.icon` is an Icon Composer document: an `icon.json` manifest plus one
-PNG layer in `Assets/`. The layer is now `AppIconLayer.png`, drawn on transparency so
-Icon Composer still supplies the background gradient and glass treatment. `scale` moved
-from `0.82` to `1.0`: upstream's layer was a full-bleed image needing inset, this one
-carries its own.
+PNG layer in `Assets/`. The selected Split Signal layer is drawn on transparency so
+Icon Composer supplies the forest-green background gradient and native treatment. Its
+grooved source pane and clean rendered pane express the source-to-preview transition
+without reusing the crowded eye, lens, or Markdown down-arrow motifs.
 
-**It is a placeholder, not a design.** Amber, chosen to sit far from macOS Preview's
-blue-grey, with the Markdown down-arrow, and legible at 16px in a Finder list.
-`scripts/make-icon.swift` regenerates it, so colour and mark are cheap to change —
-replace the PNG and rebuild. Real artwork can drop in the same way.
+`swift scripts/make-icon.swift --install-mdview` regenerates the installed layer. The
+same deterministic AppKit-path generator also produces the public Rendered Fold set,
+conventional 16–1024 px iconsets, compiled ICNS files, and flattened previews under
+`artwork/app-icons/`.
 
 `docs/app-icon.png` and the README screenshots are upstream marketing assets and are left
 alone.
