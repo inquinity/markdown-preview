@@ -164,7 +164,7 @@ Those are product decisions, not defects, and filing them would be noise.
 | **M2** | Identity & release | Team ID, four bundle IDs, app group, display names; replace the Amore release pipeline; rewrite `CLAUDE.md` / `AGENTS.md` | ✅ done |
 | **M3** | Deprivileging | Stub Sentry + PostHog; excise Sparkle; orphan CLI installer; collapse Privacy pane; drop `network.client` and test Quick Look | ✅ done |
 | **M3b** | *Conditional* | Quick Look CSP — the extension does need `network.client`, so the page blocks remote content instead | ✅ done |
-| **M4** | Containment | `md-asset:` confinement — written and submitted upstream as [PR #337](https://github.com/pluk-inc/markdown-preview/pull/337); arrives here on the next `git merge upstream/main` once merged | **waiting on upstream** — see below |
+| **M4** | Containment | `md-asset:` confinement — submitted upstream as [PR #337](https://github.com/pluk-inc/markdown-preview/pull/337) and **carried on this fork ahead of that merge** (cherry-pick of `cb6ae07`) | ✅ shipping here; still open upstream — see below |
 | **M2b** | Rebranding | Replace the app icon | ✅ done — placeholder, regenerate with `scripts/make-icon.swift` |
 | **M5** | Distribution | Notarize (✅ `dist/MDView 1.0.0.dmg`), verify on a second Mac (✅ passed), ship via corporate share or Dropbox (pending — the user's own action, not tool-driven) | **in progress** — one step left |
 
@@ -407,6 +407,40 @@ cause was known and describes only the symptom. The cause and the fix went upstr
 No separate comment was added to the issue: the PR body carries the analysis, and posting
 it twice is noise. If #343 is merged, this fork's copy becomes redundant and drops out on
 the next `git merge upstream/main`.
+
+**M4 — the `md-asset:` containment fix is carried locally, on purpose, and must be
+dropped again.** The fix went upstream as PR #337 and was deliberately *not* on this
+fork's `main` for a while: the reasoning was that the build was for one person who mostly
+opens documents he wrote himself.
+
+M5 changes that. Once colleagues have the DMG, the threat model is theirs, not the
+author's — they will open whatever arrives in `~/Downloads`. That is the trigger recorded
+here for revisiting the decision, and it has now fired, so the fix is cherry-picked onto
+`main` rather than waiting on a maintainer who has not yet reviewed it.
+
+**How to remove it when upstream merges #337.** The cherry-pick and upstream's merge will
+be the same change arriving twice. If upstream merges it verbatim, `git merge
+upstream/main` resolves silently — both sides made the same edit. If the maintainer
+modified it, revert the cherry-pick *before* merging so the merge is clean and their
+version is what lands:
+
+```bash
+git revert 466bb61      # the cherry-pick on this fork
+git merge upstream/main # now trivially clean
+```
+
+Either way the end state must be upstream's version, not ours. `AssetContainmentTests`
+guards the outcome: if a merge ever lands that drops containment, its three rejection
+tests fail rather than the loss going unnoticed.
+
+**What the cherry-pick cost.** It applied cleanly (git auto-merged the two files this
+fork had already diverged on) but broke `AssetContainmentTests`, which existed to
+document the *unfixed* behaviour — two `_knownGap` tests asserting that
+`md-asset:///etc/passwd` resolves, plus a skipped placeholder for the containment check.
+That file was written to fail the day the gap closed, and it did exactly that. The gap
+tests are now inverted into containment assertions, the skip is gone, and a positive case
+(an asset genuinely inside the folder still resolves) and the sibling-prefix case were
+added. Mutation-checked: disabling `isContained` fails all three rejection tests.
 
 **F3 — the `/` read-only entitlement.** Both targets carry
 `com.apple.security.temporary-exception.files.absolute-path.read-only` = `/`. There is no
