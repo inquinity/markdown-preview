@@ -85,15 +85,17 @@ struct GeneralSettingsView: View {
                 Text(L("The app the Open button in the document toolbar uses first. Its menu still offers every other installed app."))
             }
 
-            Section {
-                LabeledContent(L("Command line tools")) {
-                    Button(L("Install…")) {
-                        appDelegate?.installCommandLineToolsFromSettings()
-                    }
-                }
-            } footer: {
-                Text(L("Adds mdp, md-preview, and markdown-preview to your PATH. Run it again after updating the app to refresh the commands."))
-            }
+            // The "Command line tools -> Install..." section is removed in this
+            // fork. M3 orphaned the CLI installer: the menu item and the
+            // apple-events entitlement went, and the `markdown-preview` binary
+            // is no longer bundled -- but this button survived and still called
+            // into the installer. It could not succeed, and its only failure
+            // path is an NSLog, so the button did nothing at all, silently,
+            // while its footer promised three commands on the user's PATH.
+            //
+            // The installer code itself stays (see docs/FORK-NOTES.md, "There
+            // is deliberately dead code in this fork") -- this removes the last
+            // reachable caller, not the code behind it.
         }
         .formStyle(.grouped)
         .onAppear {
