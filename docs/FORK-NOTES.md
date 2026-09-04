@@ -146,7 +146,7 @@ merged it stops being our diff to carry:
 | `md-asset:` scheme has no path containment (`MarkdownAssetResolution.swift:49`) | Advisory → PR | **accepted**; [GHSA-vgmc-h5g6-xh2q](https://github.com/pluk-inc/markdown-preview/security/advisories/GHSA-vgmc-h5g6-xh2q). Maintainer asked us to write the fix — [PR #337](https://github.com/pluk-inc/markdown-preview/pull/337) open, awaiting review |
 | Preview document has no Content-Security-Policy | Issue → PR | **filed** — [#339](https://github.com/pluk-inc/markdown-preview/issues/339), with both working policies and an offer to PR |
 | `ALLOWED_URI_REGEXP` permits `http`/`https` | Issue → PR, after the CSP lands | pending |
-| Mermaid diagrams do not render in Quick Look, though `README.md` says they do | Issue | **filed** — [#338](https://github.com/pluk-inc/markdown-preview/issues/338), against cask 0.0.51. Root cause since found and fixed in this fork (see B1); the issue still describes only the symptom |
+| Mermaid diagrams do not render in Quick Look, though `README.md` says they do | Issue → PR | **submitted** — [#338](https://github.com/pluk-inc/markdown-preview/issues/338) filed against cask 0.0.51, root cause found later (see B1); fix submitted as [PR #343](https://github.com/pluk-inc/markdown-preview/pull/343), open and awaiting review. Marked `Fixes #338`, so merging closes the issue |
 
 The `md-asset:` finding goes through GitHub's private vulnerability reporting (enabled
 on upstream), **not** a public issue: it describes an unfixed weakness in a shipping app
@@ -400,9 +400,13 @@ webview — recorded because every one of them is plausible enough to be re-trie
   resources, so the harness produced a page with no Mermaid in it and reported zero CSP
   violations. That looked like evidence and was not.
 
-The upstream issue ([#338](https://github.com/pluk-inc/markdown-preview/issues/338)) was
-filed before the cause was known and still describes only the symptom; it deserves the
-root cause and a patch.
+[#338](https://github.com/pluk-inc/markdown-preview/issues/338) was filed before the
+cause was known and describes only the symptom. The cause and the fix went upstream as
+[PR #343](https://github.com/pluk-inc/markdown-preview/pull/343) — cut fresh from
+`upstream/main`, carrying the same change as here plus its tests, and marked `Fixes #338`.
+No separate comment was added to the issue: the PR body carries the analysis, and posting
+it twice is noise. If #343 is merged, this fork's copy becomes redundant and drops out on
+the next `git merge upstream/main`.
 
 **F3 — the `/` read-only entitlement.** Both targets carry
 `com.apple.security.temporary-exception.files.absolute-path.read-only` = `/`. There is no
