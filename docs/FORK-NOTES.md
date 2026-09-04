@@ -180,7 +180,20 @@ Unscheduled — not part of the milestone sequence above, and not blocking M5. `
 | **F4** | Click-to-load control for remote images in the app window, the way mail clients defer them | |
 | **F5** | Manual-test `.md` files need pass/fail criteria a human can read off the screen | See below |
 | **F7** | Application menu still said "Markdown Preview" | ✅ done — see below. Its two adjacent findings ("Check for Updates…", "Send Anonymous Crash Reports") are also resolved — both removed from the menu on request, see below. |
-| **F8** | Pick a final product name and icon | Both current ones are explicitly provisional: `MDView` was a quick pick to stop the Dock collision with upstream, and the icon (`scripts/make-icon.swift`) was called a placeholder when it shipped. Whatever gets decided needs to land in `Localizable.strings` *and* `MainMenu.strings` (see F7) *and* `AppIcon.icon`, not just one of them. |
+| **F8** | Pick a final product name and icon | Both current ones are explicitly provisional: `MDView` was a quick pick to stop the Dock collision with upstream, and the icon (`scripts/make-icon.swift`) was called a placeholder when it shipped. Whatever gets decided needs to land in `Localizable.strings` *and* `MainMenu.strings` (see F7) *and* `AppIcon.icon`, not just one of them. | A concept round is merged at `docs/icon-concepts/` — ten renders, a Dock-scale board and the market survey behind them. It is **input to this item, not its resolution**: nothing there is wired in, and `AppIcon.icon` is still the placeholder. **Fork-only** — see below. |
+
+### Never offered upstream
+
+Alongside telemetry, Sparkle and the CLI installer, the **name and icon are fork-only by
+intent**. `MDView` and its icon exist precisely to stop the Dock collision with upstream's
+own build; contributing them would recreate the problem they were chosen to solve. The
+concept round in `docs/icon-concepts/` is covered by this too.
+
+This is the opposite of how the security work is treated. Containment (#337), the Quick
+Look Mermaid fix (#343) and the CSP (#339) are upstream's defects and go back to them;
+identity is a product decision and stays here. `contrib/*` branches are cut from
+`upstream/main`, so nothing under `docs/icon-concepts/` can reach one by accident — but
+the rule is written down rather than left to that.
 
 ### Deferred, with reasons
 
