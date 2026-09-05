@@ -33,13 +33,31 @@ Quick Look will not pick up a new build until the app has been in
 
 | File | What it proves |
 |---|---|
-| `tests/fixtures/security/inline-html.md` | Sanitisation. **Most sections should look empty; that is the pass.** The credential-harvesting section is the one to read carefully: a password field and a Sign in button appearing means stop, do not ship. |
+| `tests/fixtures/security/inline-html.md` | Sanitisation. **Most sections collapse to nothing, and that is the pass.** Judge the *control*, not the words: a stripped element leaves its text behind, so the credential section may show an inert "Sign in" with no button under it. A **text field you can click into**, or a button that behaves like one, means stop and do not ship. Also check the task list still toggles — clicking a checkbox writes back to the file. |
 | `tests/fixtures/security/path-traversal.md` | Containment. Every image must be a broken-image placeholder. Any file contents on screen is a document reading files it has no right to. |
 | `tests/fixtures/security/remote-beacon.md` | Tracking pixels. Every image broken, page still styled normally. |
 | `tests/fixtures/relative-assets/post.md` | The other half: containment must not break *legitimate* relative images. Two must render, two must not. |
 
 Open each in **both** the app window and Quick Look. They resolve assets by
 different mechanisms and have failed independently before.
+
+### Why "it looks empty" is not the same as "it is safe"
+
+DOMPurify defaults to `KEEP_CONTENT: true`: a forbidden element is removed and
+its children are **kept and reparented**. That has bitten this project twice,
+in opposite directions.
+
+- **A real hole read as safe.** `FORBID_TAGS` listed `form`, so `<form>`
+  disappeared — while the `<input>` and `<button>` inside it survived on their
+  own and drew a working credential prompt. The automated test asserted
+  `forms == 0`, which was true, and passed for as long as the bug existed. The
+  fix forbids the controls; the test now counts them.
+- **A pass read as a failure.** With the controls forbidden, the button's label
+  survives as ordinary text. "Sign in" on screen with nothing behind it is the
+  system working.
+
+So the question to ask of this fixture is never "is the section empty" but
+**"is there anything here I can type into or click".**
 
 ### Proving no request left the machine
 

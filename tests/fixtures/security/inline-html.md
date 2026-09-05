@@ -12,9 +12,17 @@ DOMPurify bundle, or reintroduces a code path that writes to `innerHTML` without
 sanitising, those tests fail.
 
 **Reading this by eye:** each section below states what you should see. The
-whole file passes when every EXPECT holds. Sanitisation removes elements
-without leaving a gap, so **most sections should look empty** — an empty
-section is the passing result here, not a rendering failure.
+whole file passes when every EXPECT holds.
+
+Two things to know before reading, or you will misjudge a pass:
+
+1. **Sanitisation leaves no gap.** Most sections collapse to nothing, and an
+   empty section is the passing result, not a rendering failure.
+2. **Removing an element can leave its text behind.** DOMPurify defaults to
+   `KEEP_CONTENT`, so a stripped `<button>Sign in</button>` leaves the words
+   *Sign in* as ordinary paragraph text. That is a pass: the button is gone.
+   **Judge the control, not the words.** What must never appear is something
+   you can type into or click.
 
 ## Script execution
 
@@ -31,7 +39,7 @@ section is the passing result here, not a rendering failure.
 
 ## Framed and embedded content
 
-> **EXPECT:** nothing between this note and the next heading.
+> **EXPECT:** nothing, or at most inert leftover text.
 > **FAIL IF:** you see an inset panel, a bordered rectangle, a plugin
 > placeholder, or a "cannot be displayed" message — any of those means the
 > frame element survived and tried to load.
@@ -56,11 +64,21 @@ section is the passing result here, not a rendering failure.
 
 ## Credential harvesting
 
-> **EXPECT:** nothing between this note and the next heading.
-> **FAIL IF:** you see a password box or a **Sign in** button. That is the
-> whole test: if a text field and a button appear, a document you merely
-> opened is able to ask you for a password and post it to a server. Seeing
-> them means this build must not be used.
+> **EXPECT:** at most the inert words *Sign in* as plain text — no box to
+> type in, and nothing that depresses or highlights when clicked.
+> **FAIL IF:** you see a **text field** you can click into, or a **button**
+> that behaves like one. That is the whole test: if a document you merely
+> opened can put a password field on screen, it can ask you for a password.
+> Seeing either means this build must not be used.
+>
+> The leftover text is expected. `<form>`, `<input>` and `<button>` are all
+> removed, but DOMPurify's `KEEP_CONTENT` default preserves the text inside a
+> stripped element, so the button's label survives with nothing behind it.
+>
+> This section is why the automated test was not enough on its own: it
+> asserted `<form>` count was zero, which was true while an input and a button
+> rendered anyway — the form was unwrapped and its children kept. It now
+> counts the controls.
 
 <form action="https://example.invalid/collect" method="post">
   <input name="password" type="password">
