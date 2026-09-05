@@ -40,6 +40,23 @@ final class SanitizerNegativeTests: XCTestCase {
         XCTAssertEqual(survivors.embeds, 0, survivors.raw)
         XCTAssertEqual(survivors.forms, 0,
                        "A form survived: a document could present a credential prompt. \(survivors.raw)")
+        XCTAssertEqual(
+            survivors.formControls, 0,
+            """
+            A form control survived, so a document can draw a credential prompt \
+            with no <form> around it. DOMPurify's KEEP_CONTENT default unwraps \
+            the forbidden form and reparents its children, which is why \
+            counting <form> alone is not enough. \(survivors.raw)
+            """
+        )
+        XCTAssertGreaterThan(
+            survivors.taskCheckboxes, 0,
+            """
+            Task-list checkboxes disappeared. The input rule admits exactly the \
+            checkbox EscapingHTMLFormatter emits and drops every other input -- \
+            this says it dropped the legitimate one too. \(survivors.raw)
+            """
+        )
         XCTAssertEqual(survivors.bases, 0,
                        "A <base> survived: it would re-point every relative URL on the page. \(survivors.raw)")
         XCTAssertEqual(survivors.metas, 0,
@@ -194,6 +211,12 @@ final class SanitizerNegativeTests: XCTestCase {
                 objects: a.querySelectorAll('object').length,
                 embeds: a.querySelectorAll('embed').length,
                 forms: a.querySelectorAll('form').length,
+                formControls: a.querySelectorAll(
+                    'button, select, textarea, label, fieldset, legend, output, datalist, option'
+                ).length + [...a.querySelectorAll('input')].filter(
+                    (el) => (el.getAttribute('type') || '').toLowerCase() !== 'checkbox'
+                ).length,
+                taskCheckboxes: a.querySelectorAll('input[type=checkbox]').length,
                 bases: a.querySelectorAll('base').length,
                 metas: a.querySelectorAll('meta').length,
                 links: a.querySelectorAll('link').length,
@@ -219,6 +242,8 @@ final class SanitizerNegativeTests: XCTestCase {
         var objects = 0
         var embeds = 0
         var forms = 0
+        var formControls = 0
+        var taskCheckboxes = 0
         var bases = 0
         var metas = 0
         var links = 0
@@ -232,6 +257,7 @@ final class SanitizerNegativeTests: XCTestCase {
 
         private enum CodingKeys: String, CodingKey {
             case headings, scripts, iframes, objects, embeds, forms, bases, metas, links
+            case formControls, taskCheckboxes
             case styleTags, styleAttributes, eventHandlerAttributes, scriptedHrefs
             case remoteImages, scriptExecuted
         }

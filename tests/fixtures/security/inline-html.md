@@ -42,6 +42,18 @@ section is the passing result here, not a rendering failure.
 
 <embed src="https://example.invalid/embed">
 
+## Task list — must keep working
+
+> **This is a positive control: you SHOULD see checkboxes.**
+>
+> **EXPECT:** two checkboxes below, one ticked, both greyed out and unclickable.
+> **FAIL IF:** they are missing. Form controls are stripped so a document
+> cannot draw a credential prompt, and the rule that allows this one shape —
+> a disabled checkbox — is narrow enough to get wrong in the strict direction.
+
+- [ ] unchecked task
+- [x] checked task
+
 ## Credential harvesting
 
 > **EXPECT:** nothing between this note and the next heading.
@@ -71,10 +83,15 @@ section is the passing result here, not a rendering failure.
 
 ## Scripted URLs
 
-> **EXPECT:** the words *Looks like a link* appear as **plain text, not a
-> link** — no colour, no underline, nothing to click.
-> **FAIL IF:** it renders as a clickable link. The sanitiser is supposed to
-> drop the `href` and leave the text behind.
+> **EXPECT:** the words *Looks like a link* appear, and **clicking them does
+> nothing** — no navigation, no flicker, no new window.
+> **FAIL IF:** clicking does something.
+>
+> Note the text may still be **styled** like a link, in link colour. That is
+> not a failure: the sanitiser strips the `href` and leaves `<a>Looks like a
+> link</a>` behind, and the stylesheet colours anchors whether or not they
+> have an `href`. Colour is not the test; behaviour is. An earlier version of
+> this note said to expect no colour, which reads a pass as a failure.
 
 [Looks like a link](javascript:window.__pwned=true)
 
