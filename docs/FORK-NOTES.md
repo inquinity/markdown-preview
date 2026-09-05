@@ -189,12 +189,22 @@ precisely to stop the Dock collision with upstream's own build, so contributing 
 recreate the problem they were chosen to solve. That puts them alongside telemetry,
 Sparkle and the CLI installer on the list of things never offered upstream.
 
-**Rendered Fold is the exception, and deliberately so.** `artwork/app-icons/README.md`
-describes it as the public `markdown-preview` artwork, so it was drawn for upstream's
-identity rather than this fork's. Nothing has been offered to them, and nothing should be
-without asking first — upstream has not requested artwork, and an unsolicited icon is a
-different kind of contribution from a security fix. Recorded here so the distinction is
-not lost: **Split Signal stays, Rendered Fold is available if upstream ever wants it.**
+**Rendered Fold and the concept round are the exception, and deliberately so.**
+`artwork/app-icons/README.md` describes Rendered Fold as the public `markdown-preview`
+artwork: it was drawn for upstream's identity, not this fork's.
+
+**Do not delete `docs/icon-concepts/`.** Sixteen megabytes of oversized exploration
+renders look like obvious cleanup once `artwork/` holds the production sets — and they are
+not. They are the decision material for a choice upstream's community has not made yet:
+the ten concepts, the Dock-scale comparison board and the market survey behind them. The
+production sets are two *answers*; the concept round is the *question*, and it needs to
+survive until someone over there picks. Deleting it would mean regenerating a whole round
+to hold the same conversation.
+
+Nothing has been offered upstream yet, and the security work is not a precedent for it:
+those were their defects. Artwork is a proposal, so it goes when there is someone to
+propose it to and in whatever form they prefer. **Split Signal stays here; Rendered Fold
+and the concept round are upstream's to choose from.**
 
 This is the opposite of how the security work is treated. Containment (#337), the Quick
 Look Mermaid fix (#343) and the CSP (#339) are upstream's defects and go back to them;
