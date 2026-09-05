@@ -24,7 +24,17 @@ permits `http`/`https` — so they appear as broken images rather than vanishing
 The load is what is refused. Tightening that regexp is the belt to this braces
 and is on the upstream contribution track.
 
+**Reading this by eye:** every reference below must fail to load. Broken-image
+placeholders are the passing result — the element survives sanitisation, only
+the network request is refused.
+
 ## Image beacons
+
+> **EXPECT:** two broken-image placeholders.
+> **FAIL IF:** either image renders. `example.invalid` cannot resolve, so a
+> loaded image would mean something rewrote the URL — but the real point is
+> that no request should leave the machine at all. To check that properly,
+> see the Little Snitch / `tcpdump` step in docs/MANUAL-TEST-CHECKLIST.md.
 
 ![](https://example.invalid/pixel.png?doc=quarterly-results&reader=alice)
 
@@ -32,10 +42,20 @@ and is on the upstream contribution track.
 
 ## Referenced via inline HTML
 
+> **EXPECT:** a broken-image placeholder.
+> **FAIL IF:** it renders. Raw HTML is a second route to the same beacon and
+> is covered by the CSP rather than by the sanitiser.
+
 <img src="https://example.invalid/inline.png?via=raw-html">
 
 ## Remote stylesheet and font
 
 Both are denied by `default-src 'none'` in the Quick Look policy.
+
+> **EXPECT:** this page keeps the app's own styling — normal fonts, normal
+> spacing, readable.
+> **FAIL IF:** the page suddenly looks unstyled or differently styled. A
+> remote stylesheet that loaded would be able to restyle the document, and
+> the request itself already told the server you opened the file.
 
 <link rel="stylesheet" href="https://example.invalid/theme.css">
