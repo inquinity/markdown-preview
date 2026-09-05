@@ -208,14 +208,20 @@ replied that he wants to move away from the Preview-alike icon and is considerin
 and a distinct identity. So this is not an unsolicited proposal: they asked, in public,
 first.
 
-**The open risk: upstream may pick Split Signal.** The board offered all ten and our vote
-was cast for 1 or 2 — and 2 is the icon now wired into `AppIcon.icon` here. If their
-community chooses it, this fork and upstream ship the same mark and the Dock collision
-that `MDView` exists to prevent comes back wearing a different face. Nothing needs doing
-until they decide; what must not happen is finding out after a release and shrugging. If
-they take Split Signal, this fork moves to Rendered Fold or another concept — the
-generator makes that a one-command change, which is much of the reason the art is drawn in
-code rather than exported once.
+**If upstream picks Split Signal, this fork moves to Rendered Fold.** Decided in advance,
+so it needs no deliberation later. The board offered all ten and our vote was for 1 or 2;
+2 is the icon wired in here, so their choosing it would put the same mark on both apps and
+bring back the Dock collision `MDView` exists to prevent. Concept 1 is already built as a
+full production family in `artwork/app-icons/rendered-fold/`, so the switch is:
+
+```bash
+swift scripts/make-icon.swift --install-rendered-fold
+```
+
+plus a rebuild. That flag was added for exactly this contingency — the installer
+previously hardcoded Split Signal, so the escape route this decision depends on did not
+actually exist. Round-tripped both ways and back to byte-identical. Drawing the art in code rather than exporting it once is much of the
+reason this is a one-command change instead of a design round.
 
 Watch for the same on the name: the maintainer floated renaming the app. `MDView` was
 picked to avoid *their current* name, so a rename upstream could either dissolve the

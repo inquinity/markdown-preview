@@ -7,6 +7,12 @@ import Foundation
 //
 //   swift scripts/make-icon.swift
 //   swift scripts/make-icon.swift --install-mdview
+//   swift scripts/make-icon.swift --install-rendered-fold
+//
+// Both families are generated every run; the --install flags choose which one
+// is copied into md-preview/AppIcon.icon. Rendered Fold is installable because
+// this fork switches to it if upstream adopts Split Signal for themselves --
+// see docs/FORK-NOTES.md.
 
 enum IconDesign: String, CaseIterable {
     case renderedFold = "rendered-fold"
@@ -22,7 +28,8 @@ enum IconDesign: String, CaseIterable {
 
 struct Options {
     var outputRoot = "artwork/app-icons"
-    var installMDView = false
+    /// Which family to install into the app, if any.
+    var install: IconDesign?
 }
 
 func parseOptions() -> Options {
@@ -33,14 +40,19 @@ func parseOptions() -> Options {
         let argument = arguments.removeFirst()
         switch argument {
         case "--install-mdview":
-            options.installMDView = true
+            options.install = .splitSignal
+        case "--install-rendered-fold":
+            options.install = .renderedFold
         case "--output-root":
             guard !arguments.isEmpty else {
                 fatalError("--output-root requires a path")
             }
             options.outputRoot = arguments.removeFirst()
         case "--help", "-h":
-            print("Usage: swift scripts/make-icon.swift [--output-root PATH] [--install-mdview]")
+            print("""
+            Usage: swift scripts/make-icon.swift [--output-root PATH] \
+            [--install-mdview | --install-rendered-fold]
+            """)
             exit(0)
         default:
             fatalError("Unknown argument: \(argument)")
@@ -430,9 +442,9 @@ do {
         try generate(design, root: outputRoot)
     }
 
-    if options.installMDView {
+    if let design = options.install {
         let generatedPackage = outputRoot
-            .appendingPathComponent(IconDesign.splitSignal.rawValue)
+            .appendingPathComponent(design.rawValue)
             .appendingPathComponent("AppIcon.icon")
         let installedPackage = repositoryRoot.appendingPathComponent("md-preview/AppIcon.icon")
         let packageFiles = ["icon.json", "Assets/AppIconLayer.png"]
@@ -441,7 +453,7 @@ do {
             let destination = installedPackage.appendingPathComponent(relativePath)
             try Data(contentsOf: source).write(to: destination, options: .atomic)
         }
-        print("installed Split Signal package at \(installedPackage.path)")
+        print("installed \(design.displayName) package at \(installedPackage.path)")
     }
 } catch {
     fputs("icon generation failed: \(error)\n", stderr)
