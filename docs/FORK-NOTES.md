@@ -179,7 +179,7 @@ Unscheduled — not part of the milestone sequence above, and not blocking M5. `
 | **F2** | CSP on the app preview page and editor (`PreviewContentPolicy`) | ✅ done and verified — math and editing confirmed working after the CSP landed. |
 | **F3** | Security-scoped bookmarks; drop the `/` read-only entitlement | |
 | **F4** | Click-to-load control for remote images in the app window, the way mail clients defer them | |
-| **F5** | Manual-test `.md` files need pass/fail criteria a human can read off the screen | See below |
+| **F5** | Manual-test `.md` files need pass/fail criteria a human can read off the screen | ✅ done — `EXPECT`/`FAIL IF` notes in every fixture, plus `docs/MANUAL-TEST-CHECKLIST.md` for upstream's `samples/`. See below |
 | **F7** | Application menu still said "Markdown Preview" | ✅ done — see below. Its two adjacent findings ("Check for Updates…", "Send Anonymous Crash Reports") are also resolved — both removed from the menu on request, see below. |
 | **F8** | Pick a final product name and icon | Icon selected: Split Signal (concept 2), now generated reproducibly and wired into `AppIcon.icon`. `MDView` remains the current private-variant name; any future rename still needs to land in `Localizable.strings` and `MainMenu.strings` (see F7). |
 
@@ -321,31 +321,37 @@ and `QuickLookContentPolicy` stop a document sending anything anywhere, so a rea
 be turned into a leak by the document that caused it. What remains unfixed on this fork
 is the read itself.
 
-**F5 — manual-test `.md` files don't say what "pass" looks like.** Every fixture written
-for this fork (`tests/fixtures/security/*.md`, `tests/fixtures/relative-assets/*.md`) and
-every upstream demo file used the same way (`samples/*.md`) explains the threat or the
-feature to a *developer*, but none of them tell a *person looking at the rendered output*
-how to tell a pass from a failure. Concretely: opening `inline-html.md` and eyeballing it
-gives no way to confirm the credential-harvesting section was actually blocked — the
-automated `SanitizerNegativeTests` can tell, a person reading the page cannot. Same
-problem the other direction: a tester has no way to distinguish "known, acceptable" from
-"newly broken." Note that the standing example for this — `samples/codeblocks.md`'s
-Mermaid block being expected to fail in Quick Look — **is no longer true**: B1 is fixed,
-and that diagram is now expected to render in both surfaces. A failure there is a
-regression, not a known limitation.
+**F5 — manual-test `.md` files didn't say what "pass" looks like. Done, both ways.**
+Every fixture written for this fork explained the threat to a *developer*; none told a
+person looking at the rendered page how to tell a pass from a failure. Opening
+`inline-html.md` and eyeballing it gave no way to confirm the credential-harvesting
+section was blocked — `SanitizerNegativeTests` could tell, a reader could not.
 
-Scope, per the user: all three locations — security fixtures, asset fixtures, and
-upstream's samples.
+The open design question was where the criteria live, since `samples/*.md` is upstream's
+file and annotating it costs recurring merge conflicts. **Resolved as both:**
 
-Open design question before implementing: `samples/*.md` is upstream's file, touched on
-their release cadence, so writing fork-specific pass/fail annotations directly into it is
-an edit to an upstream-maintained file, not a new one — the kind of thing this fork has
-otherwise avoided (see "New files are free" above). Two ways to resolve it: annotate
-`samples/*.md` in place and accept the small recurring merge cost, or leave `samples/`
-untouched and add a companion checklist (e.g. `docs/MANUAL-TEST-CHECKLIST.md`) mapping
-each sample file and section to its expected outcome and known exceptions. The fixtures
-under `tests/fixtures/` are ours either way and can be annotated directly with no such
-tradeoff.
+- **In situ, in our own fixtures** (`tests/fixtures/**`), as `EXPECT` / `FAIL IF` notes
+  read while looking at the rendered page. These files are ours, so annotating them is
+  free.
+- **`docs/MANUAL-TEST-CHECKLIST.md`** for `samples/*.md`, which stays unannotated and
+  merges cleanly, plus the things no single document can carry: build and Quick Look
+  re-registration steps, the per-surface matrix, artifact verification, the second-Mac
+  check, and a known-limitations list.
+
+Two notes on the shape, because both were mistakes waiting to happen:
+
+- **An empty section is usually the pass.** Sanitisation removes elements without leaving
+  a gap, so most of `inline-html.md` should look blank. Said plainly, or a tester reads a
+  correct result as a broken render.
+- **One section inverts it.** `rm -rf /` must be *visible*: it was authored as hidden, and
+  the sanitiser strips the `style` attribute that hid it. Invisible is the failure.
+
+Writing these also caught three fixtures whose stated expectations had gone stale, each
+describing behaviour two or three releases old: `path-traversal.md` still said containment
+did not exist, `post.md` still said the remote image "must keep working" before the CSP
+blocked it, and the Mermaid-in-Quick-Look example still described a fixed bug as an
+accepted limitation. Documentation that tells a tester the wrong expectation is worse than
+none — it converts a real regression into an expected result.
 
 **F7 — the Application menu still said "Markdown Preview." Done.** The M2b rename only
 touched `Localizable.strings`, which covers everything looked up through `L()` — the
