@@ -146,6 +146,7 @@ merged it stops being our diff to carry:
 | `md-asset:` scheme has no path containment (`MarkdownAssetResolution.swift:49`) | Advisory → PR | **accepted**; [GHSA-vgmc-h5g6-xh2q](https://github.com/pluk-inc/markdown-preview/security/advisories/GHSA-vgmc-h5g6-xh2q). Maintainer asked us to write the fix — [PR #337](https://github.com/pluk-inc/markdown-preview/pull/337) open, awaiting review |
 | Preview document has no Content-Security-Policy | Issue → PR | **filed** — [#339](https://github.com/pluk-inc/markdown-preview/issues/339), with both working policies and an offer to PR |
 | `ALLOWED_URI_REGEXP` permits `http`/`https` | Issue → PR, after the CSP lands | pending |
+| App icon too similar to macOS Preview (upstream's own issue) | Artwork offer | **posted** — concept board added to [#276](https://github.com/pluk-inc/markdown-preview/issues/276) on 2026-09-04. Their issue, opened by a user and endorsed by the maintainer, who said he is considering a rename and a distinct identity. Awaiting a pick |
 | Mermaid diagrams do not render in Quick Look, though `README.md` says they do | Issue → PR | **submitted** — [#338](https://github.com/pluk-inc/markdown-preview/issues/338) filed against cask 0.0.51, root cause found later (see B1); fix submitted as [PR #343](https://github.com/pluk-inc/markdown-preview/pull/343), open and awaiting review. Marked `Fixes #338`, so merging closes the issue |
 
 The `md-asset:` finding goes through GitHub's private vulnerability reporting (enabled
@@ -201,10 +202,24 @@ production sets are two *answers*; the concept round is the *question*, and it n
 survive until someone over there picks. Deleting it would mean regenerating a whole round
 to hold the same conversation.
 
-Nothing has been offered upstream yet, and the security work is not a precedent for it:
-those were their defects. Artwork is a proposal, so it goes when there is someone to
-propose it to and in whatever form they prefer. **Split Signal stays here; Rendered Fold
-and the concept round are upstream's to choose from.**
+The concept board **has been posted**, to [#276](https://github.com/pluk-inc/markdown-preview/issues/276)
+— upstream's own issue, opened by one of their users and endorsed by the maintainer, who
+replied that he wants to move away from the Preview-alike icon and is considering a rename
+and a distinct identity. So this is not an unsolicited proposal: they asked, in public,
+first.
+
+**The open risk: upstream may pick Split Signal.** The board offered all ten and our vote
+was cast for 1 or 2 — and 2 is the icon now wired into `AppIcon.icon` here. If their
+community chooses it, this fork and upstream ship the same mark and the Dock collision
+that `MDView` exists to prevent comes back wearing a different face. Nothing needs doing
+until they decide; what must not happen is finding out after a release and shrugging. If
+they take Split Signal, this fork moves to Rendered Fold or another concept — the
+generator makes that a one-command change, which is much of the reason the art is drawn in
+code rather than exported once.
+
+Watch for the same on the name: the maintainer floated renaming the app. `MDView` was
+picked to avoid *their current* name, so a rename upstream could either dissolve the
+problem or create a new collision.
 
 This is the opposite of how the security work is treated. Containment (#337), the Quick
 Look Mermaid fix (#343) and the CSP (#339) are upstream's defects and go back to them;
